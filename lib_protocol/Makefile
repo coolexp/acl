@@ -1,11 +1,11 @@
 SHELL = /bin/sh
 CC      = gcc
 #CC      = g++
-CC	= ${MY_ENV_CC}
-AR      = ar
+CC	= ${ENV_CC}
+AR      = ${ENV_AR}
 ARFL    = rv
 #ARFL    = cru
-RANLIB  = ranlib
+RANLIB  = ${ENV_RANLIB}
 
 CFLAGS = -c -g -W \
 -O3 \
@@ -38,6 +38,14 @@ ifeq ($(CC),)
         CC = gcc
 endif
 
+ifeq ($(AR),)
+	AR = ar
+endif
+
+ifeq ($(RANLIB),)
+	RANLIB = ranlib
+endif
+
 ifeq ($(findstring gcc, $(CC)), gcc)
 	CFLAGS += -Wstrict-prototypes
 endif
@@ -63,7 +71,7 @@ endif
 ifeq ($(findstring Darwin, $(UNIXNAME)), Darwin)
 	CFLAGS += -DMACOSX -Wno-invalid-source-encoding \
 		  -Wno-extended-offsetof -fPIC -Werror
-	UNIXTYPE = FREEBSD
+	UNIXTYPE = MACOSX
 endif
 
 # For Linux
@@ -162,8 +170,18 @@ shared: $(OBJS_DST)
 		$(CC) -shared -o $(rpath)/$(SHARED_LIBNAME) $(OBJS_DST) \
 			-R$(rpath) -L$(rpath) $(shared_ldflags); \
 		echo 'build $(rpath)/$(SHARED_LIBNAME) ok!'; \
+	elif test -n "$(rpath)" && test "$(UNIXTYPE)" = "MACOSX"; then \
+		echo "building for Darwin"; \
+		$(CC) -shared -o $(rpath)/$(SHARED_LIBNAME) $(OBJS_DST) \
+			-R$(rpath) -L$(rpath) -l_acl -lpthread; \
+		echo 'build $(rpath)/$(SHARED_LIBNAME) ok!'; \
+	elif test -n "$(rpath)" && test "$(UNIXTYPE)" = "FREEBSD"; then \
+		echo "building for FreeBSD"; \
+		$(CC) -shared -o $(rpath)/$(SHARED_LIBNAME) $(OBJS_DST) \
+			-R$(rpath) -L$(rpath) -l_acl -lpthread; \
+		echo 'build $(rpath)/$(SHARED_LIBNAME) ok!'; \
 	else \
-		echo 'skip build $(SHARED_LIBNAME); usage: make rpath=xxx'; \
+		echo 'skip build $(SHARED_LIBNAME); usage: make shared rpath=xxx'; \
 	fi
 
 $(OBJ_PATH_DST)/%.o: $(SRC_PATH_SRC)/%.c

@@ -16,7 +16,7 @@ public:
 	/**
 	 * see redis_command::redis_command()
 	 */
-	redis_zset();
+	redis_zset(void);
 
 	/**
 	 * see redis_command::redis_command(redis_client*)
@@ -24,10 +24,10 @@ public:
 	redis_zset(redis_client* conn);
 
 	/**
-	 * see redis_command::redis_command(redis_client_cluster*， size_t)
+	 * see redis_command::redis_command(redis_client_cluster*, size_t)
 	 */
-	redis_zset(redis_client_cluster* cluster, size_t max_conns);
-	virtual ~redis_zset();
+	redis_zset(redis_client_cluster* cluster, size_t max_conns = 0);
+	virtual ~redis_zset(void);
 
 	/////////////////////////////////////////////////////////////////////
 
@@ -382,9 +382,9 @@ public:
 	 * 3.1）"ZRANGEBYSCORE zset (1 5" 返回所有符合条件 1 < score <= 5 的成员
 	 * 3.2）"ZRANGEBYSCORE zset (5 (10" 返回所有符合条件 5 < score < 10 的成员
 	 */
-	int zrevrangebyscore(const char* key, const char* min, const char* max,
-		std::vector<string>* out, const int* offset = NULL,
-		const int* count = NULL);
+	//int zrevrangebyscore(const char* key, const char* min, const char* max,
+	//	std::vector<string>* out, const int* offset = NULL,
+	//	const int* count = NULL);
 
 	/**
 	 * 返回有序集 key 中，所有 score 值介于 min 和 max 之间(包括等于 min 或 max )

@@ -1,6 +1,7 @@
 #pragma once
 #include "acl_cpp/acl_cpp_define.hpp"
 #include <list>
+#include "acl_cpp/stdlib/dbuf_pool.hpp"
 #include "acl_cpp/http/http_type.hpp"
 
 struct HTTP_HDR_RES;
@@ -12,12 +13,16 @@ class string;
 class HttpCookie;
 
 /**
-	* HTTP 头类，可以构建请求头或响应头
-	*/
-class ACL_CPP_API http_header
+ * HTTP 头类，可以构建请求头或响应头
+*/
+class ACL_CPP_API http_header : public dbuf_obj
 {
 public:
-	http_header(void);
+	/**
+	 * 构造函数
+	 * @param dbuf {dbuf_guard*} 非空时将做为内存分配池
+	 */
+	http_header(dbuf_guard* dbuf = NULL);
 
 	/**
 	 * HTTP 请求头构造函数
@@ -32,14 +37,17 @@ public:
 	 * 调用该函数后用户仍可以调用 add_param 等函数添加其它参数；
 	 * 当参数字段只有参数名没有参数值时，该参数将会被忽略，所以如果想
 	 * 单独添加参数名，应该调用 add_param 方法来添加
+	 * @param dbuf {dbuf_guard*} 非空时将做为内存分配池
 	 */
-	http_header(const char* url);
+	http_header(const char* url, dbuf_guard* dbuf = NULL);
 
 	/**
 	 * HTTP 响应头构造函数
 	 * @param status {int} 状态字如：1xx, 2xx, 3xx, 4xx, 5xx
+	 * @param dbuf {dbuf_guard*} 非空时将做为内存分配池
 	 */
-	http_header(int status);
+	http_header(int status, dbuf_guard* dbuf = NULL);
+
 	virtual ~http_header(void);
 
 	/**
@@ -47,9 +55,9 @@ public:
 	 */
 	void reset(void);
 
-	//////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////
 	//            HTTP 请求与 HTTP 响应通用的方法函数
-	//////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////
 
 	/**
 	 * 设置 HTTP 头是客户端的请求头还是服务器的响应头
@@ -151,6 +159,12 @@ public:
 		return keep_alive_;
 	}
 
+	http_header& set_upgrade(const char* value = "websocket");
+	const char* get_upgrade(void) const
+	{
+		return upgrade_;
+	}
+
 	/**
 	 * 向 HTTP 头中添加 cookie
 	 * @param name {const char*} cookie 名
@@ -167,10 +181,10 @@ public:
 
 	/**
 	 * 向 HTTP 头中添加 cookie
-	 * @param cookie {http_cookie*} 必须是动态分配的 cookie 对象
+	 * @param cookie {const http_cookie*} cookie 对象
 	 * @return {http_header&} 返回本对象的引用，便于用户连续操作
 	 */
-	http_header& add_cookie(HttpCookie* cookie);
+	http_header& add_cookie(const HttpCookie* cookie);
 
 	/**
 	 * 将整型的日期转换为 rfc1123 字符串格式的日期
@@ -183,9 +197,9 @@ public:
 	 */
 	bool is_request(void) const;
 
-	/////////////////////////////////////////////////////////////////////
-	//            HTTP 请求方法函数
-	/////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////
+	//                        HTTP 请求方法函数
+	//////////////////////////////////////////////////////////////////////
 	
 	/**
 	 * 创建 HTTP 请求头数据
@@ -208,9 +222,10 @@ public:
 	 * 当参数字段只有参数名没有参数值时，该参数将会被忽略，所以如果想
 	 * 单独添加参数名，应该调用 add_param 方法来添加
 	 * @param url {const char*} 请求的 url，非空指针
+	 * @param encoding {bool} 是否对存在于 url 中的参数进行 url 编码
 	 * @return {http_header&} 返回本对象的引用，便于用户连续操作
 	 */
-	http_header& set_url(const char* url);
+	http_header& set_url(const char* url, bool encoding = true);
 
 	/**
 	 * 设置 HTTP 请求头的 HOST 字段
@@ -245,12 +260,10 @@ public:
 
 	/**
 	 * 当作为请求头时，本函数取得当前邮件头的请求方法
+	 * @param buf {string*} 存储用字符串表示的请求方法
 	 * @return {http_method_t}
 	 */
-	http_method_t get_method(void) const
-	{
-		return method_;
-	}
+	http_method_t get_method(string* buf = NULL) const;
 
 	/**
 	 * 设置 HTTP 请求头中是否允许接收压缩数据，对应的 HTTP 头字段为：
@@ -285,6 +298,37 @@ public:
 	http_header& add_int(const char* name, unsigned long long int value);
 #endif
 
+	http_header& set_ws_origin(const char* url);
+	http_header& set_ws_key(const char* key);
+	http_header& set_ws_protocol(const char* proto);
+	http_header& set_ws_version(int ver);
+
+	const char* get_ws_origin(void) const
+	{
+		return ws_origin_;
+	}
+
+	const char* get_ws_key(void) const
+	{
+		return ws_sec_key_;
+	}
+
+	const char* get_ws_protocol(void) const
+	{
+		return ws_sec_proto_;
+	}
+
+	int get_ws_version(void) const
+	{
+		return ws_sec_ver_;
+	}
+
+	http_header& set_ws_accept(const char* key);
+	const char* get_ws_accept(void) const
+	{
+		return ws_sec_accept_;
+	}
+
 	/**
 	 * url 重定向
 	 * @param url {const char*} 重定向的 URL，格式为：
@@ -313,9 +357,9 @@ public:
 	 */
 	virtual void redicrect_reset(void) {}
 
-	/////////////////////////////////////////////////////////////////////
-	//            HTTP 响应方法函数
-	/////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////
+	//                       HTTP 响应方法函数
+	//////////////////////////////////////////////////////////////////////
 
 	/**
 	 * 创建 HTTP 响应头数据
@@ -380,6 +424,8 @@ public:
 	}
 
 private:
+	dbuf_guard* dbuf_internal_;
+	dbuf_guard* dbuf_;
 	//char* domain_;  // HTTP 服务器域名
 	//unsigned short port_;               // HTTP 服务器端口
 	char* url_;                           // HTTP 请求的 URL
@@ -408,9 +454,20 @@ private:
 #endif
 	bool chunked_transfer_;               // 是否为 chunked 传输模式
 	bool transfer_gzip_;                  // 数据是否采用 gzip 压缩
+
+	char* upgrade_;
+	// just for websocket
+	char* ws_origin_;
+	char* ws_sec_key_;
+	char* ws_sec_proto_;
+	int   ws_sec_ver_;
+	char* ws_sec_accept_;
+
 	void init(void);                      // 初始化
 	void clear(void);
 	void build_common(string& buf) const; // 构建通用头
+
+	void append_accept_key(const char* sec_key, string& out) const;
 };
 
 }  // namespace acl end

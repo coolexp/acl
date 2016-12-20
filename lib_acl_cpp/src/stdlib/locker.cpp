@@ -1,5 +1,7 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/locker.hpp"
+#endif
 
 namespace acl {
 
@@ -178,6 +180,19 @@ bool locker::unlock()
 	if (acl_myflock(fHandle_, operation, ACL_FLOCK_OP_NONE) == -1)
 		return false;
 	return ret;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+lock_guard::lock_guard(locker& lk)
+: lk_(lk)
+{
+	acl_assert(lk_.lock());
+}
+
+lock_guard::~lock_guard()
+{
+	acl_assert(lk_.unlock());
 }
 
 } // namespace acl

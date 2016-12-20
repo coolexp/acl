@@ -1,5 +1,7 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/mime/mime_base64.hpp"
+#endif
 
 namespace acl {
 
@@ -25,20 +27,14 @@ static const unsigned char un_b64_tab[] = {
 	255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 };
 
-mime_base64::mime_base64()
-{
-	init(to_b64_tab, un_b64_tab, '=');
-}
-
-mime_base64::mime_base64(bool addCrlf, bool addInvalid)
-	: mime_code(addCrlf, addInvalid)
+mime_base64::mime_base64(bool addCrlf /* = false */, bool addInvalid /* = false */)
+	: mime_code(addCrlf, addInvalid, "base64")
 {
 	init(to_b64_tab, un_b64_tab, '=');
 }
 
 mime_base64::~mime_base64()
 {
-
 }
 
 void mime_base64::encode(const char* in, int n, acl::string* out)

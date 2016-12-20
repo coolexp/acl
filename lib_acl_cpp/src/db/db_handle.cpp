@@ -1,9 +1,11 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include <assert.h>
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/db/db_pool.hpp"
 #include "acl_cpp/db/query.hpp"
 #include "acl_cpp/db/db_handle.hpp"
+#endif
 
 namespace acl
 {
@@ -101,7 +103,7 @@ acl_int64 db_row::field_int64(size_t ifield, acl_int64 null_value /* = 0 */) con
 	if (ptr == NULL)
 		return null_value;
 	else
-		return ACL_DB_ATOU(ptr);
+		return acl_atoi64(ptr);
 }
 
 acl_int64 db_row::field_int64(const char* name, acl_int64 null_value /* = 0 */) const
@@ -110,7 +112,7 @@ acl_int64 db_row::field_int64(const char* name, acl_int64 null_value /* = 0 */) 
 	if (ptr == NULL)
 		return null_value;
 	else
-		return ACL_DB_ATOU(ptr);
+		return acl_atoi64(ptr);
 }
 
 double db_row::field_double(size_t ifield, double null_value /* = 0.0 */) const
@@ -238,9 +240,8 @@ size_t db_rows::length() const
 
 //////////////////////////////////////////////////////////////////////////
 
-db_handle::db_handle(const char* charset /* = "utf8" */)
-: charset_(charset)
-, result_(NULL)
+db_handle::db_handle()
+: result_(NULL)
 , id_(NULL)
 {
 	time(&when_);
@@ -250,19 +251,13 @@ db_handle::~db_handle()
 {
 	if (id_)
 		acl_myfree(id_);
-}
-
-db_handle& db_handle::set_charset(const char* charset)
-{
-	if (charset && *charset)
-		charset_ = charset;
-	return *this;
+	free_result();
 }
 
 bool db_handle::open()
 {
 	// 调用虚方法的子类实现过程
-	return dbopen(charset_.c_str());
+	return dbopen();
 }
 
 bool db_handle::exec_select(query& query)
@@ -381,7 +376,7 @@ void db_handle::free_result()
 const db_row* db_handle::operator [](size_t idx) const
 {
 	if (result_ == NULL)
-		return (NULL);
+		return NULL;
 	if (idx >= result_->length())
 		return (NULL);
 	return (*result_)[idx];
@@ -397,7 +392,7 @@ size_t db_handle::length() const
 
 bool db_handle::empty() const
 {
-	return (length() == 0 ? true : false);
+	return length() == 0 ? true : false;
 }
 
 db_handle& db_handle::set_id(const char* id)

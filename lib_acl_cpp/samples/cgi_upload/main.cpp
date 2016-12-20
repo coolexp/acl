@@ -12,7 +12,8 @@ using namespace acl;
 class http_servlet : public HttpServlet
 {
 public:
-	http_servlet(void)
+	http_servlet(socket_stream* stream, session& session)
+		: HttpServlet(stream, &session)
 	{
 		param1_ = NULL;
 		param2_ = NULL;
@@ -81,7 +82,7 @@ public:
 #endif
 
 		// 创建 xml 格式的数据体
-		xml body;
+		xml1 body;
 		body.get_root().add_child("root", true)
 			.add_child("content_type", true)
 				.add_attr("type", (int) req.getRequestType())
@@ -287,9 +288,9 @@ private:
 static void do_run(socket_stream* stream)
 {
 	memcache_session session("127.0.0.1:11211");
-	http_servlet servlet;
+	http_servlet servlet(stream, session);
 	servlet.setLocalCharset("gb2312");
-	servlet.doRun(session, stream);
+	servlet.doRun();
 }
 
 // 服务器方式运行时的服务类
@@ -312,7 +313,7 @@ static void do_alone(void)
 	acl::log::stdout_open(true);
 	const char* addr = "0.0.0.0:8081";
 	printf("listen: %s ...\r\n", addr);
-	service.run_alone(addr, NULL, 1);  // 单独运行方式
+	service.run_alone(addr, NULL, 0);  // 单独运行方式
 }
 
 // WEB CGI 模式

@@ -1,5 +1,6 @@
 #pragma once
 #include "acl_cpp/acl_cpp_define.hpp"
+#include "acl_cpp/stdlib/dbuf_pool.hpp"
 #include <vector>
 
 namespace acl {
@@ -12,20 +13,22 @@ struct URL_NV
 	char* value;
 };
 
-class ACL_CPP_API url_coder
+class ACL_CPP_API url_coder : public dbuf_obj
 {
 public:
 	/**
 	 * 构造函数
 	 * @param nocase {bool} 当为 true 时表示参数名不区别大小写
+	 * @param dbuf {dbuf_guard*} 内存池对象
 	 */
-	url_coder(bool nocase = true);
+	url_coder(bool nocase = true, dbuf_guard* dbuf = NULL);
 
 	/**
 	 * 构造函数，通过类实例对象构造
 	 * @param coder {const url_coder&}
+	 * @param dbuf {dbuf_guard*} 内存池对象
 	 */
-	url_coder(const url_coder& coder);
+	url_coder(const url_coder& coder, dbuf_guard* dbuf = NULL);
 
 	~url_coder();
 
@@ -107,10 +110,12 @@ public:
 
 private:
 	bool nocase_;
+	dbuf_guard* dbuf_;
+	dbuf_guard* dbuf_internal_;
 	std::vector<URL_NV*> params_;
 	string*  buf_;
 
-	void free_param(URL_NV*);
+	void init_dbuf(dbuf_guard* dbuf);
 };
 
 } // namespace acl end

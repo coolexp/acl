@@ -6,6 +6,7 @@
 # include "stdlib/acl_define.h"
 
 # include <string.h>
+# include <errno.h>
 # include <float.h>			/* DBL_MAX_10_EXP */
 # include <ctype.h>
 # include <limits.h>			/* CHAR_BIT */
@@ -26,9 +27,6 @@ int acl_secure_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 # endif  /* _WIN32 */
 
 # ifdef	ACL_UNIX
-#  ifndef  __USE_XOPEN2K
-#   define __USE_XOPEN2K
-#  endif
 #  ifndef  _GNU_SOURCE
 #   define _GNU_SOURCE
 #  endif
@@ -42,6 +40,7 @@ int acl_secure_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 #  include <pthread.h>
 #  include <dlfcn.h>
 #  include <dirent.h>
+#  include <netinet/in.h>
 #  include <netinet/ip.h>
 #  include <netinet/tcp.h>
 #  include <netdb.h>
@@ -51,6 +50,7 @@ int acl_secure_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 #  include <sys/stat.h>
 #  include <sys/socket.h>
 #  include <sys/un.h>
+#  include <sys/mman.h>
 #  ifdef ACL_FREEBSD
 #   include <netinet/in_systm.h>
 #   include <netinet/in.h>

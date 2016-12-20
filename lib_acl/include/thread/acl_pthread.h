@@ -10,6 +10,11 @@ extern "C" {
 #define ACL_MUTEX_MAXWAIT	(~(unsigned int)0)
 #ifdef	ACL_HAS_PTHREAD
 
+#ifdef ACL_UNIX
+# ifndef  _GNU_SOURCE
+#  define _GNU_SOURCE
+# endif
+#endif
 # include <pthread.h>
 
 typedef pthread_t acl_pthread_t;
@@ -113,10 +118,12 @@ struct acl_pthread_condattr_t {
 	char  unused_name[1];
 };
 
+# if _MSC_VER < 1900
 struct timespec {
 	time_t tv_sec;		/* Seconds. */
 	long int tv_nsec;	/* Nanoseconds. */
 };
+#endif
 
 /* in acl_pthread.c */
 ACL_API void acl_pthread_end(void);

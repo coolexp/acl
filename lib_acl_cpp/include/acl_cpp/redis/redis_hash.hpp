@@ -23,7 +23,7 @@ public:
 	/**
 	 * see redis_command::redis_command()
 	 */
-	redis_hash();
+	redis_hash(void);
 
 	/**
 	 * see redis_command::redis_command(redis_client*)
@@ -31,11 +31,11 @@ public:
 	redis_hash(redis_client* conn);
 
 	/**
-	 * see redis_command::redis_command(redis_client_cluster*， size_t)
+	 * see redis_command::redis_command(redis_client_cluster*, size_t)
 	 */
-	redis_hash(redis_client_cluster* cluster, size_t max_conns);
+	redis_hash(redis_client_cluster* cluster, size_t max_conns = 0);
 
-	virtual ~redis_hash();
+	virtual ~redis_hash(void);
 
 	/////////////////////////////////////////////////////////////////////
 
@@ -168,8 +168,9 @@ public:
 	 * @param result {acl::string&} 存储查询结果值(内部对该 string 进行内容追加)
 	 *  store the value result of the given field
 	 * @return {bool} 返回值含义：
-	 *  true -- 成功获得对象的域字段值
-	 *          get the value associated with field
+	 *  true -- 操作成功，当result为空时表示 KEY 或字段域不存在
+	 *          get the value associated with field; if result is empty then
+	 *          the key or the name field doesn't exist
 	 *  false -- 域字段不存在或操作失败或该 key 对象非哈希对象
 	 *           the field not exists, or error happened,
 	 *           or the key isn't a hash key
@@ -211,12 +212,18 @@ public:
 	 *  return the number of fields be removed successfully, or -1 when
 	 *  error happened or operating on a no hash key
 	 */
-	int hdel(const char* key, const char* first_name, ...);
+	int hdel(const char* key, const char* first_name);
 	int hdel(const char* key, const char* names[], size_t argc);
 	int hdel(const char* key, const char* names[],
 		const size_t names_len[], size_t argc);
 	int hdel(const char* key, const std::vector<string>& names);
 	int hdel(const char* key, const std::vector<const char*>& names);
+	int hdel_fields(const char* key, const char* names[], size_t argc);
+	int hdel_fields(const char* key, const char* names[],
+		const size_t names_len[], size_t argc);
+	int hdel_fields(const char* key, const std::vector<string>& names);
+	int hdel_fields(const char* key, const std::vector<const char*>& names);
+	int hdel_fields(const char* key, const char* first_name, ...);
 
 	/**
 	 * 当某个 key 对象中的某个域字段为整数时，对其进行加减操作
@@ -300,6 +307,22 @@ public:
 	 */
 	int hlen(const char* key);
 
+	/**
+	 * 获得某个 key 中的指定域的数据长度
+	 * Returns the string length of the value associated with field
+	 * in the hash stored at key
+	 * @param key {const char*} key 键值
+	 *  the hash key
+	 * @param name {const char*} key 对象的域字段名称
+	 *  the field's name
+	 * @return {int} 如果 key 或 name 不存在，则返回 0，如果 key 非哈希
+	 *  键或出错，则返回 -1
+	 *  If the key or the field do not exist, 0 is returned; If the key is
+	 *  not the hash key or error happened, -1 is returned.
+	 */
+	int hstrlen(const char* key, const char* name, size_t name_len);
+	int hstrlen(const char* key, const char *name);
+	
 	/**
 	 * 命令用于迭代哈希键中的键值对
 	 * scan the name and value of all fields in hash stored at key

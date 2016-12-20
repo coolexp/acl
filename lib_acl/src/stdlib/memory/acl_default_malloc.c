@@ -36,7 +36,7 @@ static size_t  __malloc_limit = 100000000;
   * integer alignment or better.
   */
 typedef struct MBLOCK {
-	int    signature;		/* set when block is active */
+	size_t signature;		/* set when block is active */
 	size_t length;			/* user requested length */
 	union {
 		ALIGN_TYPE align;
@@ -48,32 +48,34 @@ typedef struct MBLOCK {
 #define FILLER		0x0
 
 #define CHECK_PTR(_ptr_, _real_ptr_, _len_, _fname_, _line_) { \
-	if (_ptr_ == 0) \
-		acl_msg_fatal("%s(%d): null pointer input", _fname_, _line_); \
-	_real_ptr_ = (MBLOCK *) (((char *) _ptr_) - offsetof(MBLOCK, u.payload[0])); \
-	if (_real_ptr_->signature != SIGNATURE) \
-		acl_msg_fatal("%s(%d): corrupt or unallocated memory block(%d, 0x%x, 0x%x)", \
-			_fname_, _line_, (int) _real_ptr_->length, _real_ptr_->signature, SIGNATURE); \
-	if ((_len_ = _real_ptr_->length) < 1) \
-		acl_msg_fatal("%s(%d): corrupt memory block length", _fname_, _line_); \
+  if (_ptr_ == 0) \
+    acl_msg_fatal("%s(%d): null pointer input", _fname_, _line_); \
+  _real_ptr_ = (MBLOCK *) (((char*)_ptr_) - offsetof(MBLOCK, u.payload[0])); \
+  if (_real_ptr_->signature != SIGNATURE) \
+    acl_msg_fatal("%s(%d): corrupt or unallocated block(%d, 0x%x, 0x%x)", \
+      _fname_, _line_, (int) _real_ptr_->length, \
+      (int) _real_ptr_->signature, SIGNATURE); \
+  if ((_len_ = _real_ptr_->length) < 1) \
+    acl_msg_fatal("%s(%d): corrupt memory block length", _fname_, _line_); \
 }
 
 #define CHECK_IN_PTR(_ptr_, _real_ptr_, _len_, _fname_, _line_) { \
-	if (_ptr_ == 0) \
-		acl_msg_fatal("%s(%d): null pointer input", _fname_, _line_); \
-	_real_ptr_ = (MBLOCK *) (((char *) _ptr_) - offsetof(MBLOCK, u.payload[0])); \
-	if (_real_ptr_->signature != SIGNATURE) \
-		acl_msg_fatal("%s(%d): corrupt or unallocated memory block(%d, 0x%x, 0x%x)", \
-			_fname_, _line_, (int) _real_ptr_->length, _real_ptr_->signature, SIGNATURE); \
-	_real_ptr_->signature = 0; \
-	if ((_len_ = _real_ptr_->length) < 1) \
-		acl_msg_fatal("%s(%d): corrupt memory block length", _fname_, _line_); \
+  if (_ptr_ == 0) \
+    acl_msg_fatal("%s(%d): null pointer input", _fname_, _line_); \
+  _real_ptr_ = (MBLOCK *) (((char*)_ptr_) - offsetof(MBLOCK, u.payload[0])); \
+  if (_real_ptr_->signature != SIGNATURE) \
+    acl_msg_fatal("%s(%d): corrupt or unallocated block(%d, 0x%x, 0x%x)", \
+      _fname_, _line_, (int) _real_ptr_->length, \
+      (int) _real_ptr_->signature, SIGNATURE); \
+  _real_ptr_->signature = 0; \
+  if ((_len_ = _real_ptr_->length) < 1) \
+    acl_msg_fatal("%s(%d): corrupt memory block length", _fname_, _line_); \
 }
 
 #define CHECK_OUT_PTR(_ptr_, _real_ptr_, _len_) { \
-	_real_ptr_->signature = SIGNATURE; \
-	_real_ptr_->length = _len_; \
-	_ptr_ = _real_ptr_->u.payload; \
+  _real_ptr_->signature = SIGNATURE; \
+  _real_ptr_->length = _len_; \
+  _ptr_ = _real_ptr_->u.payload; \
 }
 
 #define SPACE_FOR(len)	(offsetof(MBLOCK, u.payload[0]) + len)
@@ -124,6 +126,17 @@ static char empty_string[] = "";
 } while (0)
 #endif  /* ACL_WINDOWS */
 
+#ifdef	DEBUG_MEM
+static __thread int __nmalloc   = 0;
+static __thread int __ncalloc   = 0;
+static __thread int __nrealloc  = 0;
+static __thread int __nfree     = 0;
+static __thread int __nstrdup   = 0;
+static __thread int __nstrndup  = 0;
+static __thread int __nmemdup   = 0;
+static __thread ssize_t __nsize = 0;
+#endif
+
 void acl_default_memstat(const char *filename, int line,
 	void *ptr, size_t *len, size_t *real_len)
 {
@@ -143,6 +156,17 @@ void acl_default_memstat(const char *filename, int line,
 		*real_len = SPACE_FOR(*len);
 }
  
+void acl_default_meminfo(void)
+{
+#ifdef DEBUG_MEM
+	printf("%s(%d): __nmalloc: %d, __ncalloc: %d, __nrealloc: %d, "
+		"__nfree: %d, diff: %d, __nsize: %ld\r\n",
+		__FUNCTION__, __LINE__, __nmalloc, __ncalloc, __nrealloc,
+		__nfree, __nmalloc + __nrealloc - __nfree,
+		(unsigned long) __nsize);
+#endif
+}
+
 void acl_default_set_memlimit(size_t len)
 {
 	acl_assert(len > 0);
@@ -161,6 +185,7 @@ void *acl_default_malloc(const char *filename, int line, size_t len)
 	char *ptr;
 	MBLOCK *real_ptr;
 	const char *pname = NULL;
+
 #if 0
 	printf("%s:%d, len: %d\r\n", filename, line, (int) len);
 	acl_trace_info();
@@ -171,9 +196,12 @@ void *acl_default_malloc(const char *filename, int line, size_t len)
 	else
 		pname = __FILENAME_UNKNOWN;
 
-	if (len < 1)
-		acl_msg_fatal("%s(%d), %s: malloc: length %ld invalid",
+	if (len < 1) {
+		acl_msg_warn("%s(%d), %s: malloc: length %ld invalid",
 			pname, line, myname, (long) len);
+		acl_trace_info();
+		len = 128;
+	}
 
 	new_len = SPACE_FOR(len);
 	if (new_len <= 0)
@@ -182,7 +210,13 @@ void *acl_default_malloc(const char *filename, int line, size_t len)
 	else if (new_len >= __malloc_limit) {
 		acl_msg_warn("%s(%d): new_len(%d) too large",
 			myname, __LINE__, (int) new_len);
+		acl_trace_info();
 	}
+
+#ifdef 	DEBUG_MEM
+	__nmalloc++;
+	__nsize += new_len;
+#endif
 
 #ifdef	_USE_GLIB
 	if ((real_ptr = (MBLOCK *) g_malloc(new_len)) == 0) {
@@ -198,11 +232,8 @@ void *acl_default_malloc(const char *filename, int line, size_t len)
 		return 0;
 	}
 #endif
-	CHECK_OUT_PTR(ptr, real_ptr, len);
-#if 0
-	memset(ptr, FILLER, len);
-#endif
 
+	CHECK_OUT_PTR(ptr, real_ptr, len);
 	return ptr;
 }
 
@@ -212,6 +243,9 @@ void *acl_default_calloc(const char *filename, int line,
 	void *ptr;
 	int   n;
 
+#ifdef 	DEBUG_MEM
+	__ncalloc++;
+#endif
 	n = (int) (nmemb * size);
 	ptr = acl_default_malloc(filename, line, n);
 	memset(ptr, FILLER, n);
@@ -238,9 +272,16 @@ void *acl_default_realloc(const char *filename, int line,
 		return acl_default_malloc(pname, line, len);
 #endif
 
-	if (len < 1)
-		acl_msg_fatal("%s(%d)->%s: realloc: requested length %ld",
+	if (len < 1) {
+		acl_msg_warn("%s(%d)->%s: realloc: requested length %ld",
 			pname, line, myname, (long) len);
+		acl_trace_info();
+		len = 128;
+	}
+
+	if (ptr == NULL)
+		return acl_default_malloc(pname, line, len);
+
 	CHECK_IN_PTR(ptr, real_ptr, old_len, pname, line);
 
 	new_len = SPACE_FOR(len);
@@ -250,7 +291,13 @@ void *acl_default_realloc(const char *filename, int line,
 	else if (new_len >= __malloc_limit) {
 		acl_msg_warn("%s(%d): new_len(%d) too large",
 			myname, __LINE__, (int) new_len);
+		acl_trace_info();
 	}
+
+#ifdef 	DEBUG_MEM
+	__nrealloc++;
+	__nsize += new_len - old_len;
+#endif
 
 #ifdef	_USE_GLIB
 	if ((real_ptr = (MBLOCK *) g_realloc((char *) real_ptr, new_len)) == 0)
@@ -296,6 +343,12 @@ void acl_default_free(const char *filename, int line, void *ptr)
 /*
 		memset((char *) real_ptr, FILLER, SPACE_FOR(len));
 */
+
+#ifdef 	DEBUG_MEM
+		__nfree++;
+		__nsize -= len;
+#endif
+
 #ifdef	_USE_GLIB
 		g_free(real_ptr);
 #else
@@ -326,6 +379,11 @@ char *acl_default_strdup(const char *filename, int line, const char *str)
 	if (*str == 0)
 		return (char *) empty_string;
 #endif
+
+#ifdef 	DEBUG_MEM
+	__nstrdup++;
+#endif
+
 	return strcpy(acl_default_malloc(pname, line, strlen(str) + 1), str);
 }
 
@@ -352,8 +410,14 @@ char *acl_default_strndup(const char *filename, int line,
 	if (*str == 0)
 		return (char *) empty_string;
 #endif
+
 	if ((cp = memchr(str, 0, len)) != 0)
 		len = cp - str;
+
+#ifdef 	DEBUG_MEM
+	__nstrndup++;
+#endif
+
 	result = memcpy(acl_default_malloc(pname, line, len + 1), str, len);
 	result[len] = 0;
 	return result;
@@ -375,5 +439,10 @@ void *acl_default_memdup(const char *filename, int line,
 	if (ptr == 0)
 		acl_msg_fatal("%s(%d)->%s: null pointer argument",
 			pname, line, myname);
+
+#ifdef 	DEBUG_MEM
+	__nmemdup++;
+#endif
+
 	return memcpy(acl_default_malloc(pname, line, len), ptr, len);
 }

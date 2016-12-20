@@ -1,11 +1,14 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/dbuf_pool.hpp"
 #include "acl_cpp/stdlib/util.hpp"
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/stream/socket_stream.hpp"
 #include "acl_cpp/redis/redis_result.hpp"
+#include "acl_cpp/redis/redis_connection.hpp"
 #include "acl_cpp/redis/redis_client.hpp"
+#endif
 #include "redis_request.hpp"
 
 namespace acl
@@ -15,20 +18,39 @@ namespace acl
 
 redis_client::redis_client(const char* addr, int conn_timeout /* = 60 */,
 	int rw_timeout /* = 30 */, bool retry /* = true */)
-: conn_timeout_(conn_timeout)
-, rw_timeout_(rw_timeout)
+: check_addr_(false)
 , retry_(retry)
 , slice_req_(false)
 , slice_res_(false)
 {
 	addr_ = acl_mystrdup(addr);
+	pass_ = NULL;
+	set_timeout(conn_timeout, rw_timeout);
 }
 
 redis_client::~redis_client()
 {
 	acl_myfree(addr_);
+	if (pass_)
+		acl_myfree(pass_);
+
 	if (conn_.opened())
 		conn_.close();
+}
+
+void redis_client::set_check_addr(bool on)
+{
+	check_addr_ = on;
+}
+
+void redis_client::set_password(const char* pass)
+{
+	if (pass_)
+		acl_myfree(pass_);
+	if (pass && *pass)
+		pass_ = acl_mystrdup(pass);
+	else
+		pass_ = NULL;
 }
 
 socket_stream* redis_client::get_stream()
@@ -41,6 +63,28 @@ socket_stream* redis_client::get_stream()
 		return NULL;
 }
 
+bool redis_client::check_connection(socket_stream& conn)
+{
+	char peer[64];
+	ACL_SOCKET fd = conn.sock_handle();
+
+	if (acl_getpeername(fd, peer, sizeof(peer) - 1) == -1)
+	{
+		logger_error("getpeername failed: %s, fd: %d, addr: %s",
+			last_serror(), (int) fd, addr_);
+		return false;
+	}
+
+	if (strcmp(peer, addr_) != 0)
+	{
+		logger_error("addr no matched, peer: %s, addr: %s, fd: %d",
+			peer, addr_, (int) fd);
+		return false;
+	}
+
+	return true;
+}
+
 bool redis_client::open()
 {
 	if (conn_.opened())
@@ -51,6 +95,22 @@ bool redis_client::open()
 			addr_, last_serror());
 		return false;
 	}
+
+	// 如果连接密码非空，则尝试用该密码向 redis-server 认证合法性
+	if (pass_ && *pass_)
+	{
+		redis_connection connection(this);
+		if (connection.auth(pass_) == false)
+		{
+			logger_error("auth error, addr: %s, passwd: %s",
+				addr_, pass_);
+			// 此处返回 true，以便于上层使用该连接访问时
+			// 由 redis-server 直接给命令报未认证的错训，
+			// 从而免得在 redis_command 类中不断地重试连接
+			return true;
+		}
+	}
+
 	return true;
 }
 
@@ -239,7 +299,8 @@ redis_result* redis_client::get_redis_object(dbuf_pool* pool)
 	char ch;
 	if (conn_.read(ch) == false)
 	{
-		logger_error("read first char error, server: %s", addr_);
+		logger_warn("read char error: %s, server: %s, fd: %u",
+			last_serror(), addr_, (unsigned) conn_.sock_handle());
 		return NULL;
 	}
 
@@ -280,7 +341,7 @@ redis_result* redis_client::get_redis_objects(dbuf_pool* pool, size_t nobjs)
 }
 
 const redis_result* redis_client::run(dbuf_pool* pool, const string& req,
-	size_t nchildren)
+	size_t nchildren, int* rw_timeout /* = NULL */)
 {
 	// 重置协议处理状态
 	bool retried = false;
@@ -289,7 +350,21 @@ const redis_result* redis_client::run(dbuf_pool* pool, const string& req,
 	while (true)
 	{
 		if (open() == false)
+		{
+			logger_error("open error: %s, addr: %s, req: %s",
+				last_serror(), addr_, req.c_str());
 			return NULL;
+		}
+
+		if (rw_timeout != NULL)
+			conn_.set_rw_timeout(*rw_timeout);
+
+		if (check_addr_ && check_connection(conn_) == false)
+		{
+			logger_error("CHECK_CONNECTION FAILED!");
+			close();
+			break;
+		}
 
 		if (!req.empty() && conn_.write(req) == -1)
 		{
@@ -301,8 +376,8 @@ const redis_result* redis_client::run(dbuf_pool* pool, const string& req,
 				continue;
 			}
 
-			logger_error("write to redis(%s) error: %s",
-				addr_, last_serror());
+			logger_error("write to redis(%s) error: %s, req: %s",
+				addr_, last_serror(), req.c_str());
 			return NULL;
 		}
 
@@ -312,12 +387,34 @@ const redis_result* redis_client::run(dbuf_pool* pool, const string& req,
 			result = get_redis_object(pool);
 
 		if (result != NULL)
+		{
+			if (rw_timeout != NULL)
+				conn_.set_rw_timeout(rw_timeout_);
 			return result;
+		}
 
 		close();
 
-		if (!retry_ || retried)
+		if (req.empty())
+		{
+			logger_error("no retry for request is empty");
 			break;
+		}
+
+		if (!retry_ || retried)
+		{
+			logger_error("result NULL, addr: %s, retry: %s, "
+				"retried: %s, req: %s", addr_,
+				retry_ ? "true" : "false",
+				retried ? "true" : "false", req.c_str());
+
+			break;
+		}
+
+		logger_error("result NULL, addr: %s, retry: %s, "
+			"retried: %s, req: %s", addr_,
+			retry_ ? "true" : "false",
+			retried ? "true" : "false", req.c_str());
 
 		retried = true;
 	}
@@ -326,7 +423,7 @@ const redis_result* redis_client::run(dbuf_pool* pool, const string& req,
 }
 
 const redis_result* redis_client::run(dbuf_pool* pool, const redis_request& req,
-	size_t nchildren)
+	size_t nchildren, int* rw_timeout /* = NULL */)
 {
 	// 重置协议处理状态
 	bool retried = false;
@@ -340,6 +437,16 @@ const redis_result* redis_client::run(dbuf_pool* pool, const redis_request& req,
 	{
 		if (open() == false)
 			return NULL;
+
+		if (rw_timeout != NULL)
+			conn_.set_rw_timeout(*rw_timeout);
+
+		if (check_addr_ && check_connection(conn_) == false)
+		{
+			logger_error("CHECK_CONNECTION FAILED!");
+			close();
+			break;
+		}
 
 		if (size > 0 && conn_.writev(iov, (int) size) == -1)
 		{
@@ -362,12 +469,21 @@ const redis_result* redis_client::run(dbuf_pool* pool, const redis_request& req,
 			result = get_redis_object(pool);
 
 		if (result != NULL)
+		{
+			if (rw_timeout != NULL)
+				conn_.set_rw_timeout(rw_timeout_);
 			return result;
+		}
 
 		close();
 
-		if (!retry_ || retried)
+		if (!retry_ || retried || size == 0)
+		{
+			logger_error("retry_: %s, retried: %s, size: %d",
+				retry_ ? "yes" : "no", retried ? "yes" : "no",
+				(int) size);
 			break;
+		}
 
 		retried = true;
 	}

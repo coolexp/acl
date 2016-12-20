@@ -1,10 +1,12 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/string.hpp"
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/stdlib/locker.hpp"
 #include "acl_cpp/connpool/connect_monitor.hpp"
 #include "acl_cpp/connpool/connect_pool.hpp"
 #include "acl_cpp/connpool/connect_manager.hpp"
+#endif
 
 namespace acl
 {
@@ -14,6 +16,8 @@ connect_manager::connect_manager()
 , service_idx_(0)
 , stat_inter_(1)
 , retry_inter_(1)
+, idle_ttl_(-1)
+, check_inter_(-1)
 , monitor_(NULL)
 {
 }
@@ -32,8 +36,8 @@ connect_manager::~connect_manager()
 }
 
 // 分析一个服务器地址，格式：IP:PORT[:MAX_CONN]
-// 返回值 0 表示非法的地址
-static size_t check_addr(const char* addr, string& buf, size_t default_count)
+// 返回值 < 0 表示非法的地址
+static int check_addr(const char* addr, string& buf, size_t default_count)
 {
 	// 数据格式：IP:PORT[:CONNECT_COUNT]
 	ACL_ARGV* tokens = acl_argv_split(addr, ":|");
@@ -41,7 +45,7 @@ static size_t check_addr(const char* addr, string& buf, size_t default_count)
 	{
 		logger_error("invalid addr: %s", addr);
 		acl_argv_free(tokens);
-		return 0;
+		return -1;
 	}
 
 	int port = atoi(tokens->argv[1]);
@@ -49,16 +53,16 @@ static size_t check_addr(const char* addr, string& buf, size_t default_count)
 	{
 		logger_error("invalid addr: %s, port: %d", addr, port);
 		acl_argv_free(tokens);
-		return 0;
+		return -1;
 	}
 	buf.format("%s:%d", tokens->argv[0], port);
-	size_t conn_max;
+	int conn_max;
 	if (tokens->argc >= 3)
-		conn_max = (size_t) atoi(tokens->argv[2]);
+		conn_max = atoi(tokens->argv[2]);
 	else
-		conn_max = default_count;
-	if (conn_max <= 0)
-		conn_max = default_count;
+		conn_max = (int) default_count;
+	if (conn_max < 0)
+		conn_max = (int) default_count;
 	acl_argv_free(tokens);
 	return conn_max;
 }
@@ -79,21 +83,33 @@ void connect_manager::set_retry_inter(int n)
 	lock_.unlock();
 }
 
-void connect_manager::init(const char* default_addr,
-	const char* addr_list, size_t count)
+void connect_manager::set_check_inter(int n)
+{
+	check_inter_ = n;
+}
+
+void connect_manager::set_idle_ttl(time_t ttl)
+{
+	idle_ttl_ = ttl;
+}
+
+void connect_manager::init(const char* default_addr, const char* addr_list,
+	size_t count, int conn_timeout /* = 30 */, int rw_timeout /* = 30 */)
 {
 	if (addr_list != NULL && *addr_list != 0)
-		set_service_list(addr_list, count);
+		set_service_list(addr_list, (int) count,
+			conn_timeout, rw_timeout);
 
 	// 创建缺省服务连接池对象，该对象一同放入总的连接池集群中
 	if (default_addr != NULL && *default_addr != 0)
 	{
 		logger("default_pool: %s", default_addr);
-		size_t max = check_addr(default_addr, default_addr_, count);
-		if (max > 0)
-			default_pool_ = &set(default_addr_.c_str(), max);
-		else
+		int max = check_addr(default_addr, default_addr_, count);
+		if (max < 0)
 			logger("no default connection set");
+		else
+			default_pool_ = &set(default_addr_.c_str(), max,
+				conn_timeout, rw_timeout);
 	}
 	else
 		logger("no default connection set");
@@ -103,7 +119,8 @@ void connect_manager::init(const char* default_addr,
 		logger_fatal("no connection available!");
 }
 
-void connect_manager::set_service_list(const char* addr_list, int count)
+void connect_manager::set_service_list(const char* addr_list, int count,
+	int conn_timeout, int rw_timeout)
 {
 	if (addr_list == NULL || *addr_list == 0)
 	{
@@ -121,12 +138,12 @@ void connect_manager::set_service_list(const char* addr_list, int count)
 	{
 		const char* ptr = (const char*) iter.data;
 		int max = check_addr(ptr, addr, count);
-		if (max <= 0)
+		if (max < 0)
 		{
 			logger_error("invalid server addr: %s", addr.c_str());
 			continue;
 		}
-		set(addr.c_str(), max);
+		(void) set(addr.c_str(), max, conn_timeout, rw_timeout);
 		logger("add one service: %s, max connect: %d",
 			addr.c_str(), max);
 	}
@@ -134,7 +151,8 @@ void connect_manager::set_service_list(const char* addr_list, int count)
 	acl_myfree(buf);
 }
 
-connect_pool& connect_manager::set(const char* addr, size_t count)
+connect_pool& connect_manager::set(const char* addr, size_t count,
+	int conn_timeout /* = 30 */, int rw_timeout /* = 30 */)
 {
 	char key[256];
 	ACL_SAFE_STRNCPY(key, addr, sizeof(key));
@@ -154,6 +172,11 @@ connect_pool& connect_manager::set(const char* addr, size_t count)
 
 	connect_pool* pool = create_pool(key, count, pools_.size() - 1);
 	pool->set_retry_inter(retry_inter_);
+	pool->set_timeout(conn_timeout, rw_timeout);
+	if (idle_ttl_ >= 0)
+		pool->set_idle_ttl(idle_ttl_);
+	if (check_inter_ > 0)
+		pool->set_check_inter(check_inter_);
 	pools_.push_back(pool);
 
 	lock_.unlock();

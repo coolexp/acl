@@ -1,19 +1,42 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/string.hpp"
 #include "acl_cpp/stdlib/log.hpp"
+#include "acl_cpp/stdlib/dbuf_pool.hpp"
 #include "acl_cpp/stdlib/url_coder.hpp"
+#endif
 
 namespace acl
 {
 
-url_coder::url_coder(bool nocase /* = true */)
-: nocase_(nocase)
+void url_coder::init_dbuf(dbuf_guard* dbuf)
 {
+	if (dbuf != NULL)
+	{
+		dbuf_ = dbuf;
+		dbuf_internal_ = NULL;
+	}
+	else
+	{
+		dbuf_internal_ = new dbuf_guard;
+		dbuf_ = dbuf_internal_;
+	}
+}
+
+url_coder::url_coder(bool nocase /* = true */, dbuf_guard* dbuf /* = NULL */)
+	: dbuf_obj(dbuf)
+	, nocase_(nocase)
+{
+	init_dbuf(dbuf);
+
 	buf_ = NEW string(128);
 }
 
-url_coder::url_coder(const url_coder& coder)
+url_coder::url_coder(const url_coder& coder, dbuf_guard* dbuf /* = NULL */)
+	: dbuf_obj(dbuf)
 {
+	init_dbuf(dbuf);
+
 	buf_ = NEW string(coder.buf_->c_str());
 	nocase_ = coder.nocase_;
 
@@ -25,7 +48,9 @@ url_coder::url_coder(const url_coder& coder)
 url_coder::~url_coder()
 {
 	reset();
+
 	delete buf_;
+	delete dbuf_internal_;
 }
 
 const url_coder& url_coder::operator =(const url_coder& coder)
@@ -40,37 +65,31 @@ const url_coder& url_coder::operator =(const url_coder& coder)
 	return *this;
 }
 
-void url_coder::free_param(URL_NV* param)
-{
-	acl_myfree(param->name);
-	acl_myfree(param->value);
-	acl_myfree(param);
-}
-
 void url_coder::reset()
 {
-	std::vector<URL_NV*>::iterator it = params_.begin();
-	for (; it != params_.end(); ++it)
-		free_param(*it);
 	params_.clear();
 	buf_->clear();
+	dbuf_->dbuf_reset();
 }
 
 void url_coder::encode(string& buf, bool clean /* = true */) const
 {
 	if (clean)
 		buf.clear();
+
+	ACL_DBUF_POOL *dbuf = dbuf_->get_dbuf().get_dbuf();
 	std::vector<URL_NV*>::const_iterator cit = params_.begin();
 	char* name, *value;
+
 	for (; cit != params_.end(); ++cit)
 	{
 		if (cit != params_.begin())
 			buf << '&';
-		name = acl_url_encode((*cit)->name);
-		value = acl_url_encode((*cit)->value);
+		name = acl_url_encode((*cit)->name, dbuf);
+		value = acl_url_encode((*cit)->value, dbuf);
 		buf << name << '=' << value;
-		acl_myfree(name);
-		acl_myfree(value);
+		dbuf_->dbuf_free(name);
+		dbuf_->dbuf_free(value);
 	}
 }
 
@@ -82,8 +101,10 @@ const string& url_coder::to_string() const
 
 void url_coder::decode(const char* str)
 {
-	ACL_ARGV* tokens = acl_argv_split(str, "&");
+	ACL_DBUF_POOL *dbuf = dbuf_->get_dbuf().get_dbuf();
+	ACL_ARGV* tokens = acl_argv_split3(str, "&", dbuf);
 	ACL_ITER iter;
+
 	acl_foreach(iter, tokens)
 	{
 		char* name = (char*) iter.data;
@@ -91,15 +112,13 @@ void url_coder::decode(const char* str)
 		if (value == NULL || *(value + 1) == 0)
 			continue;
 		*value++ = 0;
-		name = acl_url_decode(name);
-		value = acl_url_decode(value);
-		URL_NV* param = (URL_NV*) acl_mymalloc(sizeof(URL_NV));
+		name = acl_url_decode(name, dbuf);
+		value = acl_url_decode(value, dbuf);
+		URL_NV* param = (URL_NV*) dbuf_->dbuf_alloc(sizeof(URL_NV));
 		param->name = name;
 		param->value = value;
 		params_.push_back(param);
 	}
-
-	acl_argv_free(tokens);
 }
 
 url_coder& url_coder::set(const char* name, const char* value,
@@ -107,7 +126,8 @@ url_coder& url_coder::set(const char* name, const char* value,
 {
 	if (name == NULL || *name == 0 || value == NULL || *value == 0)
 	{
-		logger_error("invalid input");
+		//logger_error("invalid input: name: [%s], value: [%s]",
+		//	name ? name : "null", value ? value : "null");
 		return *this;
 	}
 
@@ -121,16 +141,15 @@ url_coder& url_coder::set(const char* name, const char* value,
 		{
 			if (cmp((*it)->name, name) == 0)
 			{
-				free_param(*it);
 				params_.erase(it);
 				break;
 			}
 		}
 	}
 
-	URL_NV* param = (URL_NV*) acl_mymalloc(sizeof(URL_NV));
-	param->name = acl_mystrdup(name);
-	param->value = acl_mystrdup(value);
+	URL_NV* param = (URL_NV*) dbuf_->dbuf_alloc(sizeof(URL_NV));
+	param->name = dbuf_->dbuf_strdup(name);
+	param->value = dbuf_->dbuf_strdup(value);
 	params_.push_back(param);
 	return *this;
 }
@@ -197,7 +216,6 @@ bool url_coder::del(const char* name)
 	{
 		if (cmp((*it)->name, name) == 0)
 		{
-			free_param(*it);
 			params_.erase(it);
 			return true;
 		}

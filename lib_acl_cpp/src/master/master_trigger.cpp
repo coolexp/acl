@@ -1,6 +1,8 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/master/master_trigger.hpp"
+#endif
 
 namespace acl
 {
@@ -50,7 +52,7 @@ void master_trigger::run_alone(const char* path /* = NULL */,
 	has_called = true;
 	daemon_mode_ = false;
 #ifdef ACL_WINDOWS
-	acl_init();
+	acl_cpp_init();
 #endif
 	if (interval <= 0)
 		interval = 1;

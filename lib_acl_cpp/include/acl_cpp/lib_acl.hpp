@@ -17,8 +17,11 @@
 #include "acl_cpp/stdlib/string.hpp"
 #include "acl_cpp/stdlib/util.hpp"
 #include "acl_cpp/stdlib/xml.hpp"
+#include "acl_cpp/stdlib/xml1.hpp"
+#include "acl_cpp/stdlib/xml2.hpp"
 #include "acl_cpp/stdlib/zlib_stream.hpp"
 #include "acl_cpp/stdlib/md5.hpp"
+#include "acl_cpp/stdlib/sha1.hpp"
 #include "acl_cpp/stdlib/charset_conv.hpp"
 #include "acl_cpp/stdlib/escape.hpp"
 #include "acl_cpp/stdlib/pipe_stream.hpp"
@@ -28,6 +31,8 @@
 #include "acl_cpp/stdlib/thread_queue.hpp"
 #include "acl_cpp/stdlib/scan_dir.hpp"
 #include "acl_cpp/stdlib/dbuf_pool.hpp"
+
+#include "acl_cpp/serialize/gsoner.hpp"
 
 #include "acl_cpp/memcache/memcache.hpp"
 #include "acl_cpp/memcache/memcache_pool.hpp"
@@ -82,6 +87,7 @@
 #include "acl_cpp/http/http_utils.hpp"
 #include "acl_cpp/http/http_request_pool.hpp"
 #include "acl_cpp/http/http_request_manager.hpp"
+#include "acl_cpp/http/websocket.hpp"
 
 #include "acl_cpp/db/query.hpp"
 #include "acl_cpp/db/mysql_conf.hpp"
@@ -101,6 +107,7 @@
 #include "acl_cpp/hsocket/hsclient.hpp"
 #include "acl_cpp/hsocket/hstable.hpp"
 #include "acl_cpp/hsocket/hsrow.hpp"
+#include "acl_cpp/hsocket/hserror.hpp"
 
 #include "acl_cpp/beanstalk/beanstalk.hpp"
 #include "acl_cpp/beanstalk/beanstalk_pool.hpp"
@@ -120,11 +127,15 @@
 #include "acl_cpp/mime/rfc2047.hpp"
 #include "acl_cpp/mime/rfc822.hpp"
 
+#include "acl_cpp/smtp/mail_attach.hpp"
+#include "acl_cpp/smtp/mail_body.hpp"
+#include "acl_cpp/smtp/mail_message.hpp"
+#include "acl_cpp/smtp/smtp_client.hpp"
+
 #include "acl_cpp/event/event_timer.hpp"
 
 #include "acl_cpp/master/master_base.hpp"
 #include "acl_cpp/master/master_threads.hpp"
-#include "acl_cpp/master/master_threads2.hpp"
 #include "acl_cpp/master/master_aio.hpp"
 #include "acl_cpp/master/master_proc.hpp"
 #include "acl_cpp/master/master_udp.hpp"

@@ -41,8 +41,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories=".\include;..\lib_acl\include;..\lib_protocol\include;..\include\sqlite;..\include\zlib;..\include\mysql;..\include;"
-				PreprocessorDefinitions="WIN32;_DEBUG;_LIB;USE_WIN_ICONV;HAS_MYSQL_DLL;HAS_ZLIB_DLL"
+				AdditionalIncludeDirectories=".\include;..\lib_acl\include;..\lib_protocol\include;..\include\sqlite;..\include\zlib;..\include\mysql;..\include"
+				PreprocessorDefinitions="WIN32;_DEBUG;_LIB;USE_WIN_ICONV;HAS_MYSQL_DLL;HAS_SQLITE_DLL;HAS_ZLIB_DLL"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
@@ -111,7 +111,7 @@
 				EnableIntrinsicFunctions="true"
 				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories=".\include;..\lib_acl\include;..\lib_protocol\include;..\include\sqlite;..\include\zlib;..\include\mysql;..\include;"
-				PreprocessorDefinitions="WIN32;NDEBUG;_LIB;USE_WIN_ICONV;HAS_MYSQL_DLL;HAS_ZLIB_DLL"
+				PreprocessorDefinitions="WIN32;NDEBUG;_LIB;USE_WIN_ICONV;HAS_MYSQL_DLL;HAS_SQLITE_DLL;HAS_ZLIB_DLL"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="2"
@@ -176,7 +176,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				AdditionalIncludeDirectories=".\include;..\lib_acl\include;..\lib_protocol\include;..\include\sqlite;..\include\zlib;..\include\mysql;..\include;"
-				PreprocessorDefinitions="WIN32;_DEBUG;_LIB;ACL_DLL;ACL_CPP_DLL;ACL_CPP_EXPORTS;USE_WIN_ICONV;HAS_MYSQL_DLL;HAS_ZLIB_DLL"
+				PreprocessorDefinitions="WIN32;_DEBUG;_LIB;ACL_DLL;ACL_CPP_DLL;ACL_CPP_EXPORTS;USE_WIN_ICONV;HAS_MYSQL_DLL;HAS_SQLITE_DLL;HAS_ZLIB_DLL"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -255,7 +255,7 @@
 				EnableIntrinsicFunctions="true"
 				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories=".\include;..\lib_acl\include;..\lib_protocol\include;..\include\sqlite;..\include\zlib;..\include\mysql;..\include;"
-				PreprocessorDefinitions="WIN32;NDEBUG;_LIB;USE_WIN_ICONV;ACL_DLL;ACL_CPP_DLL;ACL_CPP_EXPORTS;HAS_MYSQL_DLL;HAS_ZLIB_DLL"
+				PreprocessorDefinitions="WIN32;NDEBUG;_LIB;USE_WIN_ICONV;ACL_DLL;ACL_CPP_DLL;ACL_CPP_EXPORTS;HAS_MYSQL_DLL;HAS_SQLITE_DLL;HAS_ZLIB_DLL"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="2"
@@ -565,6 +565,10 @@
 					RelativePath=".\src\http\HttpSession.cpp"
 					>
 				</File>
+				<File
+					RelativePath=".\src\http\websocket.cpp"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="ipc"
@@ -607,10 +611,6 @@
 				</File>
 				<File
 					RelativePath=".\src\master\master_threads.cpp"
-					>
-				</File>
-				<File
-					RelativePath=".\src\master\master_threads2.cpp"
 					>
 				</File>
 				<File
@@ -970,6 +970,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\src\stdlib\sha1.cpp"
+					>
+				</File>
+				<File
 					RelativePath=".\src\stdlib\snprintf.cpp"
 					>
 				</File>
@@ -986,6 +990,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\src\stdlib\thread_queue.cpp"
+					>
+				</File>
+				<File
 					RelativePath=".\src\stdlib\url_coder.cpp"
 					>
 				</File>
@@ -995,6 +1003,14 @@
 				</File>
 				<File
 					RelativePath=".\src\stdlib\xml.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\stdlib\xml1.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\stdlib\xml2.cpp"
 					>
 				</File>
 				<File
@@ -1123,6 +1139,34 @@
 				</File>
 				<File
 					RelativePath=".\src\disque\disque_job.cpp"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="smtp"
+				>
+				<File
+					RelativePath=".\src\smtp\mail_attach.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\smtp\mail_body.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\smtp\mail_message.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\smtp\smtp_client.cpp"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="serialize"
+				>
+				<File
+					RelativePath=".\src\serialize\gsoner.cpp"
 					>
 				</File>
 			</Filter>
@@ -1347,6 +1391,10 @@
 					RelativePath=".\include\acl_cpp\http\HttpSession.hpp"
 					>
 				</File>
+				<File
+					RelativePath=".\include\acl_cpp\http\websocket.hpp"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="ipc"
@@ -1389,10 +1437,6 @@
 				</File>
 				<File
 					RelativePath=".\include\acl_cpp\master\master_threads.hpp"
-					>
-				</File>
-				<File
-					RelativePath=".\include\acl_cpp\master\master_threads2.hpp"
 					>
 				</File>
 				<File
@@ -1656,6 +1700,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\include\acl_cpp\stdlib\sha1.hpp"
+					>
+				</File>
+				<File
 					RelativePath=".\include\acl_cpp\stdlib\singleton.hpp"
 					>
 				</File>
@@ -1676,6 +1724,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\include\acl_cpp\stdlib\thread_queue.hpp"
+					>
+				</File>
+				<File
 					RelativePath=".\include\acl_cpp\stdlib\url_coder.hpp"
 					>
 				</File>
@@ -1689,6 +1741,14 @@
 				</File>
 				<File
 					RelativePath=".\include\acl_cpp\stdlib\xml.hpp"
+					>
+				</File>
+				<File
+					RelativePath=".\include\acl_cpp\stdlib\xml1.hpp"
+					>
+				</File>
+				<File
+					RelativePath=".\include\acl_cpp\stdlib\xml2.hpp"
 					>
 				</File>
 				<File
@@ -1805,6 +1865,34 @@
 				</File>
 				<File
 					RelativePath=".\include\acl_cpp\disque\disque_node.hpp"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="smtp"
+				>
+				<File
+					RelativePath=".\include\acl_cpp\smtp\mail_attach.hpp"
+					>
+				</File>
+				<File
+					RelativePath=".\include\acl_cpp\smtp\mail_body.hpp"
+					>
+				</File>
+				<File
+					RelativePath=".\include\acl_cpp\smtp\mail_message.hpp"
+					>
+				</File>
+				<File
+					RelativePath=".\include\acl_cpp\smtp\smtp_client.hpp"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="serialize"
+				>
+				<File
+					RelativePath=".\include\acl_cpp\serialize\gsoner.hpp"
 					>
 				</File>
 			</Filter>

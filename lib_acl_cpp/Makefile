@@ -1,10 +1,12 @@
 SHELL = /bin/sh
-CC	= ${MY_ENV_CC}
 #CC      = g++
-AR      = ar
+CC	= ${ENV_CPP}
+AR      = ${ENV_AR}
 ARFL    = rv
 #ARFL    = cru
-RANLIB  = ranlib
+RANLIB  = ${ENV_RANLIB}
+
+FLAGS   = ${ENV_FLAGS}
 
 CFLAGS = -c -g -W \
 -O3 \
@@ -15,13 +17,18 @@ CFLAGS = -c -g -W \
 -D_POSIX_PTHREAD_SEMANTICS \
 -Wno-long-long \
 -Wformat \
--DHAS_POLARSSL \
--DHAS_MYSQL_DLL
+-DHAS_MYSQL_DLL \
+-DHAS_SQLITE_DLL \
+-Winvalid-pch \
+-DACL_PREPARE_COMPILE
+#-DHAS_POLARSSL
 #-DUSE_DYNAMIC
 # -Wcast-align
 #-Wcast-qual
 #just for freebsd's iconv.h
 CFLAGS += -I/usr/local/include
+
+shared_ldflags = -l_protocol -l_acl -lz -lpthread
 
 ###########################################################
 #Check system:
@@ -30,9 +37,27 @@ SYSLIB =
 CHECKSYSRES = @echo "Unknow system type!";exit 1
 UNIXNAME = $(shell uname -sm)
 UNIXTYPE = LINUX
+polarssl =
 
 ifeq ($(CC),)
         CC = g++
+endif
+
+ifeq ($(AR),)
+	AR = ar
+endif
+
+ifeq ($(RANLIB),)
+	RANLIB = ranlib
+endif
+
+ifeq ($(findstring HAS_POLARSSL, $(FLAGS)), HAS_POLARSSL)
+	CFLAGS += -DHAS_POLARSSL
+	polarssl = on
+endif
+
+ifeq ($(findstring on, $(polarssl)), on)
+	CFLAGS += -DHAS_POLARSSL
 endif
 
 ifeq ($(findstring clang++, $(CC)), clang++)
@@ -44,6 +69,7 @@ endif
 ifeq ($(findstring FreeBSD, $(UNIXNAME)), FreeBSD)
 	CFLAGS += -DFREEBSD -fPIC -Werror
 	UNIXTYPE = FREEBSD
+	shared_ldflags = -l_protocol -l_acl -L/usr/local/lib -liconv -lz -lpthread
 endif
 
 # For Darwin
@@ -52,12 +78,14 @@ ifeq ($(findstring Darwin, $(UNIXNAME)), Darwin)
 		  -Wno-extended-offsetof -fPIC -Werror \
 		  -Wno-unused-private-field
 	UNIXTYPE = MACOSX
+	shared_ldflags = -l_protocol -l_acl -L/usr/lib -liconv -lz -lpthread
 endif
 
 # For Linux
 ifeq ($(findstring Linux, $(UNIXNAME)), Linux)
 	CFLAGS += -DLINUX2 -fPIC -Werror
 	UNIXTYPE = LINUX
+	shared_ldflags = -l_protocol -l_acl -lrt -lpthread -lz -ldl
 endif
 
 # For MINGW
@@ -111,11 +139,13 @@ OBJS_DST = $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/*.cpp)
 	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/beanstalk/*.cpp))) \
 	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/memcache/*.cpp))) \
 	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/session/*.cpp))) \
+	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/smtp/*.cpp))) \
 	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/mime/*.cpp))) \
 	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/mime/internal/*.cpp))) \
 	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/connpool/*.cpp))) \
 	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/redis/*.cpp))) \
-	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/disque/*.cpp)))
+	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/disque/*.cpp))) \
+	   $(patsubst %.cpp, $(OBJ_PATH_DST)/%.o, $(notdir $(wildcard src/serialize/*.cpp)))
 
 OBJS_DEF = $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/*.cpp))) \
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/stdlib/*.cpp))) \
@@ -130,11 +160,13 @@ OBJS_DEF = $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/*.cp
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/beanstalk/*.cpp))) \
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/memcache/*.cpp))) \
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/session/*.cpp))) \
+	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/smtp/*.cpp))) \
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/mime/*.cpp))) \
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/mime/internal/*.cpp))) \
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/connpool/*.cpp))) \
 	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/redis/*.cpp))) \
-	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/disque/*.cpp)))
+	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/disque/*.cpp))) \
+	   $(patsubst %.cpp, $(DEF_PATH_DST)/%.inc, $(notdir $(wildcard src/serialize/*.cpp)))
 
 ###########################################################
 .PHONY = static shared clean
@@ -143,6 +175,7 @@ DATE_NOW = 20`date +%y`.`date +%m`.`date +%d`
 
 STATIC_LIBNAME = lib_acl_cpp.a
 SHARED_LIBNAME = lib_acl_cpp.so
+PCH = src/acl_stdafx.hpp.gch
 
 lib: static
 all: static shared sample
@@ -170,8 +203,7 @@ static: depends $(OBJS_DST)
 	@$(RANLIB) $(LIB_PATH_DST)/$(STATIC_LIBNAME)
 	@echo 'create $(LIB_PATH_DST)/$(STATIC_LIBNAME) ok!'
 
-shared_ldflags = -l_protocol -l_acl -lrt -lpthread -lz -ldl
-shared: depends $(OBJS_DST)
+shared: depends pch $(OBJS_DST)
 	@echo 'creating $(SHARED_LIBNAME)'
 	@if test -n "$(rpath)" && test "$(UNIXTYPE)" = "LINUX"; then \
 		echo "building for linux"; \
@@ -183,11 +215,35 @@ shared: depends $(OBJS_DST)
 		$(CC) -shared -o $(rpath)/$(SHARED_LIBNAME) $(OBJS_DST) \
 			-R$(rpath) -L$(rpath) $(shared_ldflags); \
 		echo 'build $(rpath)/$(SHARED_LIBNAME) ok!'; \
+	elif test -n "$(rpath)" && test "$(UNIXTYPE)" = "MACOSX"; then \
+		echo "building for Darwin"; \
+		$(CC) -shared -o $(rpath)/$(SHARED_LIBNAME) $(OBJS_DST) \
+			-R$(rpath) -L$(rpath) $(shared_ldflags); \
+		echo 'build $(rpath)/$(SHARED_LIBNAME) ok!'; \
+	elif test -n "$(rpath)" && test "$(UNIXTYPE)" = "FREEBSD"; then \
+		echo "building for Darwin"; \
+		$(CC) -shared -o $(rpath)/$(SHARED_LIBNAME) $(OBJS_DST) \
+			-R$(rpath) -L$(rpath) $(shared_ldflags); \
+		echo 'build $(rpath)/$(SHARED_LIBNAME) ok!'; \
 	else \
-		echo 'skip build $(SHARED_LIBNAME); usage: make rpath=xxx'; \
+		echo 'skip build $(SHARED_LIBNAME); usage: make shared rpath=xxx'; \
 	fi
 
 depends: $(OBJS_DEF)
+check:
+	@if test -n $(polarssl) && test "$(polarssl)" = "on"; then \
+		rm -f Debug/polarssl_io.o; \
+		rm -f Debug/polarssl_conf.o; \
+		rm -f Debug/polarssl_io.inc; \
+		rm -f Debug/polarssl_conf.inc; \
+	fi
+
+pch: src/acl_stdafx.hpp
+	rm -f $(PCH)
+	@if test "$(UNIXTYPE)" = "LINUX" || test "$(UNIXTYPE)" = "FREEBSD" \
+		|| test "$(UNIXTYPE)" = "MACOSX"; then \
+		$(CC) -o $(PCH) -x c++-header $(CFLAGS) src/acl_stdafx.hpp; \
+	fi
 
 # src
 $(OBJ_PATH_DST)/%.o: ./src/%.cpp
@@ -218,6 +274,8 @@ $(OBJ_PATH_DST)/%.o: ./src/session/%.cpp
 	$(COMPILE_OBJ)
 $(OBJ_PATH_DST)/%.o: ./src/connpool/%.cpp
 	$(COMPILE_OBJ)
+$(OBJ_PATH_DST)/%.o: ./src/smtp/%.cpp
+	$(COMPILE_OBJ)
 $(OBJ_PATH_DST)/%.o: ./src/mime/%.cpp
 	$(COMPILE_OBJ)
 $(OBJ_PATH_DST)/%.o: ./src/mime/internal/%.cpp
@@ -225,6 +283,8 @@ $(OBJ_PATH_DST)/%.o: ./src/mime/internal/%.cpp
 $(OBJ_PATH_DST)/%.o: ./src/redis/%.cpp
 	$(COMPILE_OBJ)
 $(OBJ_PATH_DST)/%.o: ./src/disque/%.cpp
+	$(COMPILE_OBJ)
+$(OBJ_PATH_DST)/%.o: ./src/serialize/%.cpp
 	$(COMPILE_OBJ)
 
 $(DEF_PATH_DST)/%.inc: ./src/%.cpp
@@ -255,6 +315,8 @@ $(DEF_PATH_DST)/%.inc: ./src/session/%.cpp
 	$(CREATE_DEF)
 $(DEF_PATH_DST)/%.inc: ./src/connpool/%.cpp
 	$(CREATE_DEF)
+$(DEF_PATH_DST)/%.inc: ./src/smtp/%.cpp
+	$(CREATE_DEF)
 $(DEF_PATH_DST)/%.inc: ./src/mime/%.cpp
 	$(CREATE_DEF)
 $(DEF_PATH_DST)/%.inc: ./src/mime/internal/%.cpp
@@ -263,12 +325,15 @@ $(DEF_PATH_DST)/%.inc: ./src/redis/%.cpp
 	$(CREATE_DEF)
 $(DEF_PATH_DST)/%.inc: ./src/disque/%.cpp
 	$(CREATE_DEF)
+$(DEF_PATH_DST)/%.inc: ./src/serialize/%.cpp
+	$(CREATE_DEF)
 
 clean:
 	rm -f $(LIB_PATH_DST)/lib_acl_cpp.a
 	rm -f $(LIB_PATH_DST)/lib_acl_cpp.so
 	rm -f $(OBJS_DST)
 	rm -f $(OBJS_DEF)
+	rm -f $(PCH)
 	@(cd samples; make clean)
 
 rebuild rb: clean static

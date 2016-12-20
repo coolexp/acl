@@ -13,8 +13,8 @@ static const int __value_len = 32;
 #define DELETE_VALUES(values,n)\
 do\
 {  for(int i = 0; i < (n) ; ++i)\
-	delete (values)[i];\
-   delete (values);\
+	delete [](values)[i];\
+   delete [](values);\
 } while (0);
 
 
@@ -29,13 +29,13 @@ static bool test_lpush(acl::redis_list& redis, int n)
 		int ret = redis.lpush(__key, value.c_str(), NULL);
 		if (ret <= 0)
 		{
-			printf("lpush key: %s error: %s\r\n",
-				__key, redis.result_error());
+			printf("lpush key: %s error: %s, ret: %d\r\n",
+				__key, redis.result_error(), ret);
 			return false;
 		}
 		else if (i < max_print_line)
-			printf("lpush ok, key:%s ,value:%s \r\n",
-				__key, value.c_str());
+			printf("lpush ok, key:%s, value:%s, ret: %d\r\n",
+				__key, value.c_str(), ret);
 	}
 
 	return true;
@@ -712,6 +712,8 @@ int main(int argc, char* argv[])
 	acl::string addr("127.0.0.1:6379"), cmd("all");
 	bool cluster_mode = false;
 
+	acl::log::stdout_open(true);
+
 	while ((ch = getopt(argc, argv, "hs:n:C:T:a:c")) > 0)
 	{
 		switch (ch)
@@ -744,8 +746,8 @@ int main(int argc, char* argv[])
 
 	acl::acl_cpp_init();
 
-	acl::redis_client_cluster cluster(conn_timeout, rw_timeout);
-	cluster.set(addr.c_str(), 100);
+	acl::redis_client_cluster cluster;
+	cluster.set(addr.c_str(), 100, conn_timeout, rw_timeout);
 
 	acl::redis_client client(addr.c_str(), conn_timeout, rw_timeout);
 

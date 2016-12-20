@@ -1,6 +1,7 @@
 #pragma once
 #include "acl_cpp/acl_cpp_define.hpp"
 #include <vector>
+#include <map>
 #include "acl_cpp/stdlib/string.hpp"
 #include "acl_cpp/connpool/connect_manager.hpp"
 
@@ -22,15 +23,10 @@ public:
 	/**
 	 * 构造函数;
 	 * constructor
-	 * @param conn_timeout {int} 服务器连接超时时间(秒);
-	 *  timeout in seconds for connecting the redis-server
-	 * @param rw_timeout {int}　网络 IO 读写超时时间(秒);
-	 *  read/write timeout in seconds from/to the redis-server
 	 * @param max_slot {int} 哈希槽最大值; the max hash-slot value of keys
 	 */
-	redis_client_cluster(int conn_timeout = 30, int rw_timeout = 30,
-		int max_slot = 16384);
-	virtual ~redis_client_cluster();
+	redis_client_cluster(int max_slot = 16384);
+	virtual ~redis_client_cluster(void);
 
 	/**
 	 * 根据哈希槽值获得对应的连接池;
@@ -130,29 +126,41 @@ public:
 		return redirect_sleep_;
 	}
 
+	/**
+	 * 设置某个 redis 服务相应的连接密码
+	 * set the password of one redis-server
+	 * @param addr {const char*} 指定的某 redis 服务器地址，当该参数的值为
+	 *  default 时，则指定了集群中所有 redis 服务器的缺省连接密码
+	 *  the specified redis-server's addr, the default password of all
+	 *  redis-server will be set when the addr's value is 'default'
+	 * @param pass {const char*} 指定的 redis 服务器连接密码
+	 *  the password of the specified redis-server
+	 * @return {redis_client_cluster&}
+	 */
+	redis_client_cluster& set_password(const char* addr, const char* pass);
+
 protected:
 	/**
-	 * 基类纯虚函数，用来创建连接池对象;
+	 * 基类纯虚函数，用来创建连接池对象，该函数返回后由基类设置网络连接及IO 超时时间
 	 * virtual function of base class, which is used to create
 	 * the connection pool
 	 * @param addr {const char*} 服务器监听地址，格式：ip:port;
 	 * the server addr for the connection pool, such as ip:port
-	 * @param count {size_t} 连接池的大小限制;
-	 * the max connections in one connection pool
+	 * @param count {size_t} 连接池的大小限制，该值没有 0 时则没有限制
+	 * the max connections in one connection pool, if it's 0 there
+	 * is no limit of the connections pool.
 	 * @param idx {size_t} 该连接池对象在集合中的下标位置(从 0 开始);
 	 * the index of the connection pool in pool array
 	 */
-	connect_pool* create_pool(const char* addr,
-		size_t count, size_t idx);
+	connect_pool* create_pool(const char* addr, size_t count, size_t idx);
 
 private:
-	int   conn_timeout_;
-	int   rw_timeout_;
 	int   max_slot_;
 	const char**  slot_addrs_;
 	std::vector<char*> addrs_;
 	int   redirect_max_;
 	int   redirect_sleep_;
+	std::map<string, string> passwds_;
 };
 
 } // namespace acl

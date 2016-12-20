@@ -5,8 +5,8 @@
 
 namespace acl {
 
-class socket_stream;
 class session;
+class socket_stream;
 class HttpServletRequest;
 class HttpServletResponse;
 
@@ -16,8 +16,39 @@ class HttpServletResponse;
 class ACL_CPP_API HttpServlet
 {
 public:
-	HttpServlet(void);
+	/**
+	 * 构造函数
+	 * @param stream {socket_stream*} 当在 acl_master 服务器框架控制下
+	 *  运行时，该参数必须非空；当在 apache 下以 CGI 方式运行时，该参数
+	 *  设为 NULL；另外，该函数内部不会关闭流连接，应用应自行处理流对象
+	 *  的关闭情况，这样可以方便与 acl_master 架构结合
+	 * @param session {session*} 每一个 HttpServlet 对象一个 session 对象
+	 */
+	HttpServlet(socket_stream* stream, session* session);
+
+	/**
+	 * 构造函数
+	 * @param stream {socket_stream*} 当在 acl_master 服务器框架控制下
+	 *  运行时，该参数必须非空；当在 apache 下以 CGI 方式运行时，该参数
+	 *  设为 NULL；另外，该函数内部不会关闭流连接，应用应自行处理流对象
+	 *  的关闭情况，这样可以方便与 acl_master 架构结合
+	 * @param memcache_addr {const char*}
+	 */
+	HttpServlet(socket_stream* stream,
+		const char* memcache_addr = "127.0.0.1:11211");
+
+	HttpServlet();
 	virtual ~HttpServlet(void) = 0;
+
+	session& getSession() const
+	{
+		return *session_;
+	}
+
+	socket_stream* getStream() const
+	{
+		return stream_;
+	}
 
 	/**
 	 * 设置本地字符集，如果设置了本地字符集，则在接收 HTTP 请求数据时，会
@@ -53,6 +84,23 @@ public:
 	 * @return {HttpServlet&}
 	 */
 	HttpServlet& setParseBodyLimit(int length);
+	
+	/**
+	 * HttpServlet 对象开始运行，接收 HTTP 请求，并回调以下 doXXX 虚函数，
+	 * @return {bool} 返回处理结果，返回 false 表示处理失败，则应关闭连接，
+	 *  返回 true 表示处理成功，调用此函数后应该继续通过判断请求/响应对象中
+	 *  是否需要保持长连接来确实最终是否保持长连接
+	 */
+	bool start(void);
+
+	/**
+	 * HttpServlet 对象开始运行，接收 HTTP 请求，并回调以下 doXXX 虚函数，
+	 * 该函数首先会调用 start 过程，然后根据 start 的返回结果及请求/响应
+	 * 对象是否要求保持长连接来决定是否需要与客户端保持长连接
+	 * @return {bool} 返回处理结果，返回 false 表示处理失败或处理成功且不保持
+	 *  长连接，应关闭连接
+	 */
+	bool doRun();
 
 	/**
 	 * HttpServlet 对象开始运行，接收 HTTP 请求，并回调以下 doXXX 虚函数
@@ -72,11 +120,10 @@ public:
 	 * @param stream {socket_stream*} 含义同上
 	 * @return {bool} 返回处理结果
 	 */
-	bool doRun(const char* memcached_addr = "127.0.0.1:11211",
-		socket_stream* stream = NULL);
+	bool doRun(const char* memcached_addr, socket_stream* stream);
 
 	/**
-	 * 当 HTTP 请求为 GET 方式时的虚函数
+	 * 当 HTTP 请求为 GET 方式时调用的虚函数
 	 */
 	virtual bool doGet(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -85,7 +132,16 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求为 POST 方式时的虚函数
+	 * 当 HTTP 请求为 websocket 方式时调用的虚函数
+	 */
+	virtual bool doWebsocket(HttpServletRequest&, HttpServletResponse&)
+	{
+		logger_error("child not implement doWebsocket yet!");
+		return false;
+	}
+
+	/**
+	 * 当 HTTP 请求为 POST 方式时调用的虚函数
 	 */
 	virtual bool doPost(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -94,7 +150,7 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求为 PUT 方式时的虚函数
+	 * 当 HTTP 请求为 PUT 方式时调用的虚函数
 	 */
 	virtual bool doPut(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -103,7 +159,7 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求为 CONNECT 方式时的虚函数
+	 * 当 HTTP 请求为 CONNECT 方式时调用的虚函数
 	 */
 	virtual bool doConnect(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -112,7 +168,7 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求为 PURGE 方式时的虚函数，该方法在清除 SQUID 的缓存
+	 * 当 HTTP 请求为 PURGE 方式时调用的虚函数，该方法在清除 SQUID 的缓存
 	 * 时会用到
 	 */
 	virtual bool doPurge(HttpServletRequest&, HttpServletResponse&)
@@ -122,7 +178,7 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求为 DELETE 方式时的虚函数
+	 * 当 HTTP 请求为 DELETE 方式时调用的虚函数
 	 */
 	virtual bool doDelete(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -131,7 +187,7 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求为 HEAD 方式时的虚函数
+	 * 当 HTTP 请求为 HEAD 方式时调用的虚函数
 	 */
 	virtual bool doHead(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -140,7 +196,7 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求为 OPTION 方式时的虚函数
+	 * 当 HTTP 请求为 OPTION 方式时调用的虚函数
 	 */
 	virtual bool doOptions(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -149,7 +205,28 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求方法未知时的虚函数
+	 * 当 HTTP 请求为 PROPFIND 方式时调用的虚函数
+	 */
+	virtual bool doPropfind(HttpServletRequest&, HttpServletResponse&)
+	{
+		logger_error("child not implement doPurge yet!");
+		return false;
+	}
+
+	/**
+	 * 当 HTTP 请求方法未知时调用的虚函数
+	 * @param method {const char*} 其它未知的请求方法
+	 */
+	virtual bool doOther(HttpServletRequest&, HttpServletResponse&,
+		const char* method)
+	{
+		(void) method;
+		logger_error("child not implement doOther yet!");
+		return false;
+	}
+
+	/**
+	 * 当 HTTP 请求方法未知时调用的虚函数
 	 */
 	virtual bool doUnknown(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -158,7 +235,7 @@ public:
 	}
 
 	/**
-	 * 当 HTTP 请求出错时的虚函数
+	 * 当 HTTP 请求出错时调用的虚函数
 	 */
 	virtual bool doError(HttpServletRequest&, HttpServletResponse&)
 	{
@@ -166,12 +243,21 @@ public:
 		return false;
 	}
 
+protected:
+	HttpServletRequest* req_;
+	HttpServletResponse* res_;
+
 private:
+	session* session_;
+	session* session_ptr_;
+	socket_stream* stream_;
 	bool first_;
 	char local_charset_[32];
 	int  rw_timeout_;
 	bool parse_body_enable_;
 	int  parse_body_limit_;
+
+	void init();
 };
 
 } // namespace acl

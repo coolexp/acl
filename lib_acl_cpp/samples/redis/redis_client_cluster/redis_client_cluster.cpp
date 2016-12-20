@@ -10,7 +10,7 @@ static bool test_del(acl::redis_key& cmd, int i)
 	acl::string key;
 
 	key.format("%s_%d", __keypre.c_str(), i);
-	int ret = cmd.del(key.c_str(), NULL);
+	int ret = cmd.del(key.c_str());
 	if (ret < 0)
 	{
 		printf("del key: %s error: %s\r\n",
@@ -235,6 +235,7 @@ static void usage(const char* procname)
 		"-w wait_for_cluster_resume[default: 500 ms]\r\n"
 		"-r retry_for_cluster_resnum[default: 10]\r\n"
 		"-p [preset all hash-slots of the cluster]\r\n"
+		"-P password [set the password of redis cluster]\r\n"
 		"-a cmd[set|get|expire|ttl|exists|type|del]\r\n",
 		procname);
 }
@@ -243,10 +244,10 @@ int main(int argc, char* argv[])
 {
 	int  ch, n = 1, conn_timeout = 10, rw_timeout = 10;
 	int  max_threads = 10, nsleep = 500, nretry = 10;
-	acl::string addrs("127.0.0.1:6379"), cmd;
+	acl::string addrs("127.0.0.1:6379"), cmd, passwd;
 	bool preset = false;
 
-	while ((ch = getopt(argc, argv, "hs:n:C:I:c:a:w:r:p")) > 0)
+	while ((ch = getopt(argc, argv, "hs:n:C:I:c:a:w:r:pP:")) > 0)
 	{
 		switch (ch)
 		{
@@ -280,6 +281,9 @@ int main(int argc, char* argv[])
 		case 'p':
 			preset = true;
 			break;
+		case 'P':
+			passwd = optarg;
+			break;;
 		default:
 			break;
 		}
@@ -288,7 +292,7 @@ int main(int argc, char* argv[])
 	acl::acl_cpp_init();
 	acl::log::stdout_open(true);
 
-	acl::redis_client_cluster cluster(conn_timeout, rw_timeout);
+	acl::redis_client_cluster cluster;
 
 	// 当某个连接池结点出问题，设置探测该连接结点是否恢复的时间间隔(秒)，当该值
 	// 为 0 时，则不检测
@@ -300,7 +304,12 @@ int main(int argc, char* argv[])
 	// 当重定向次数 >= 2 时每次再重定向此函数设置休息的时间(毫秒)
 	cluster.set_redirect_sleep(nsleep);
 
-	cluster.init(NULL, addrs.c_str(), max_threads);
+	cluster.init(NULL, addrs.c_str(), max_threads, conn_timeout, rw_timeout);
+
+	// 设置连接 redis 集群的密码，第一个参数为一个 redis 服务节点的服务地址，
+	// 当第一个参数值为 default 时，则设置了所有节点的统一连接密码
+	if (passwd.empty() == false)
+		cluster.set_password("default", passwd.c_str());
 
 	// 是否需要将所有哈希槽的对应关系提前设置好，这样可以去掉运行时动态添加
 	// 哈希槽的过程，从而可以提高运行时的效率

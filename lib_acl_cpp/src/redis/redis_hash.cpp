@@ -1,8 +1,10 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/redis/redis_client.hpp"
 #include "acl_cpp/redis/redis_result.hpp"
 #include "acl_cpp/redis/redis_hash.hpp"
+#endif
 
 namespace acl
 {
@@ -198,7 +200,12 @@ bool redis_hash::hgetall(const char* key, std::vector<const char*>& names,
 	return get_strings(names, values) < 0 ? false : true;
 }
 
-int redis_hash::hdel(const char* key, const char* first_name, ...)
+int redis_hash::hdel(const char* key, const char* name)
+{
+	return hdel_fields(key, name, NULL);
+}
+
+int redis_hash::hdel_fields(const char* key, const char* first_name, ...)
 {
 	const char* name;
 	std::vector<const char*> names;
@@ -212,12 +219,23 @@ int redis_hash::hdel(const char* key, const char* first_name, ...)
 
 int redis_hash::hdel(const char* key, const char* names[], size_t argc)
 {
+	return hdel_fields(key, names, argc);
+}
+
+int redis_hash::hdel_fields(const char* key, const char* names[], size_t argc)
+{
 	hash_slot(key);
 	build("HDEL", key, names, argc);
 	return get_number();
 }
 
 int redis_hash::hdel(const char* key, const char* names[],
+	const size_t names_len[], size_t argc)
+{
+	return hdel_fields(key, names, names_len, argc);
+}
+
+int redis_hash::hdel_fields(const char* key, const char* names[],
 	const size_t names_len[], size_t argc)
 {
 	hash_slot(key);
@@ -227,12 +245,22 @@ int redis_hash::hdel(const char* key, const char* names[],
 
 int redis_hash::hdel(const char* key, const std::vector<string>& names)
 {
+	return hdel_fields(key, names);
+}
+
+int redis_hash::hdel_fields(const char* key, const std::vector<string>& names)
+{
 	hash_slot(key);
 	build("HDEL", key, names);
 	return get_number();
 }
 
 int redis_hash::hdel(const char* key, const std::vector<const char*>& names)
+{
+	return hdel_fields(key, names);
+}
+
+int redis_hash::hdel_fields(const char* key, const std::vector<const char*>& names)
 {
 	hash_slot(key);
 	build("HDEL", key, names);
@@ -276,7 +304,7 @@ bool redis_hash::hincrbyfloat(const char* key, const char* name,
 
 	hash_slot(key);
 	build("HINCRBYFLOAT", key, names, values, 1);
-	if (get_string(buf, sizeof(buf)) == false)
+	if (get_string(buf, sizeof(buf)) <= 0)
 		return false;
 
 	if (result != NULL)
@@ -320,6 +348,23 @@ int redis_hash::hlen(const char* key)
 
 	hash_slot(key);
 	build("HLEN", NULL, keys, 1);
+	return get_number();
+}
+
+int redis_hash::hstrlen(const char* key, const char* name)
+{
+	return hstrlen(key, name, strlen(name));
+}
+
+int redis_hash::hstrlen(const char* key, const char* name, size_t name_len)
+{
+	const char* names[1];
+	names[0] = name;
+	size_t names_len[1];
+	names_len[0] = name_len;
+
+	hash_slot(key);
+	build("HSTRLEN", key, names, names_len, 1);
 	return get_number();
 }
 

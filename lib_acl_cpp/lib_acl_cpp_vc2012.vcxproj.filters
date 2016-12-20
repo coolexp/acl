@@ -64,9 +64,6 @@
     <ClCompile Include="src\master\master_threads.cpp">
       <Filter>Source Files\master</Filter>
     </ClCompile>
-    <ClCompile Include="src\master\master_threads2.cpp">
-      <Filter>Source Files\master</Filter>
-    </ClCompile>
     <ClCompile Include="src\ipc\ipc_service.cpp">
       <Filter>Source Files\ipc</Filter>
     </ClCompile>
@@ -280,6 +277,12 @@
     <ClCompile Include="src\http\http_utils.cpp">
       <Filter>Source Files\http</Filter>
     </ClCompile>
+    <ClCompile Include="src\http\websocket.cpp">
+      <Filter>Source Files\http</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stdlib\sha1.cpp">
+      <Filter>Source Files\stdlib</Filter>
+    </ClCompile>
     <ClCompile Include="src\stdlib\snprintf.cpp">
       <Filter>Source Files\stdlib</Filter>
     </ClCompile>
@@ -490,6 +493,27 @@
     <ClCompile Include="src\db\mysql_conf.cpp">
       <Filter>Source Files\db</Filter>
     </ClCompile>
+    <ClCompile Include="src\smtp\smtp_client.cpp">
+      <Filter>Source Files\smtp</Filter>
+    </ClCompile>
+    <ClCompile Include="src\smtp\mail_message.cpp">
+      <Filter>Source Files\smtp</Filter>
+    </ClCompile>
+    <ClCompile Include="src\smtp\mail_attach.cpp">
+      <Filter>Source Files\smtp</Filter>
+    </ClCompile>
+    <ClCompile Include="src\smtp\mail_body.cpp">
+      <Filter>Source Files\smtp</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stdlib\xml1.cpp">
+      <Filter>Source Files\stdlib</Filter>
+    </ClCompile>
+    <ClCompile Include="src\stdlib\xml2.cpp">
+      <Filter>Source Files\stdlib</Filter>
+    </ClCompile>
+    <ClCompile Include="src\serialize\gsoner.cpp">
+      <Filter>Source Files\serialize</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\acl_stdafx.hpp">
@@ -603,6 +627,9 @@
     <ClInclude Include="include\acl_cpp\http\http_utils.hpp">
       <Filter>Header Files\http</Filter>
     </ClInclude>
+    <ClInclude Include="include\acl_cpp\http\websocket.hpp">
+      <Filter>Header Files\http</Filter>
+    </ClInclude>
     <ClInclude Include="include\acl_cpp\http\HttpServlet.hpp">
       <Filter>Header Files\http</Filter>
     </ClInclude>
@@ -640,9 +667,6 @@
       <Filter>Header Files\master</Filter>
     </ClInclude>
     <ClInclude Include="include\acl_cpp\master\master_threads.hpp">
-      <Filter>Header Files\master</Filter>
-    </ClInclude>
-    <ClInclude Include="include\acl_cpp\master\master_threads2.hpp">
       <Filter>Header Files\master</Filter>
     </ClInclude>
     <ClInclude Include="include\acl_cpp\mime\rfc2047.hpp">
@@ -733,6 +757,9 @@
       <Filter>Header Files\stdlib</Filter>
     </ClInclude>
     <ClInclude Include="include\acl_cpp\stdlib\singleton.hpp">
+      <Filter>Header Files\stdlib</Filter>
+    </ClInclude>
+    <ClInclude Include="include\acl_cpp\stdlib\sha1.hpp">
       <Filter>Header Files\stdlib</Filter>
     </ClInclude>
     <ClInclude Include="include\acl_cpp\stdlib\snprintf.hpp">
@@ -1011,6 +1038,27 @@
     <ClInclude Include="include\acl_cpp\db\mysql_conf.hpp">
       <Filter>Header Files\db</Filter>
     </ClInclude>
+    <ClInclude Include="include\acl_cpp\smtp\smtp_client.hpp">
+      <Filter>Header Files\smtp</Filter>
+    </ClInclude>
+    <ClInclude Include="include\acl_cpp\smtp\mail_message.hpp">
+      <Filter>Header Files\smtp</Filter>
+    </ClInclude>
+    <ClInclude Include="include\acl_cpp\smtp\mail_attach.hpp">
+      <Filter>Header Files\smtp</Filter>
+    </ClInclude>
+    <ClInclude Include="include\acl_cpp\smtp\mail_body.hpp">
+      <Filter>Header Files\smtp</Filter>
+    </ClInclude>
+    <ClInclude Include="include\acl_cpp\stdlib\xml1.hpp">
+      <Filter>Header Files\stdlib</Filter>
+    </ClInclude>
+    <ClInclude Include="include\acl_cpp\stdlib\xml2.hpp">
+      <Filter>Header Files\stdlib</Filter>
+    </ClInclude>
+    <ClInclude Include="include\acl_cpp\serialize\gsoner.hpp">
+      <Filter>Header Files\serialize</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
@@ -1129,6 +1177,18 @@
     </Filter>
     <Filter Include="Source Files\disque">
       <UniqueIdentifier>{a6fc0af4-630b-4f95-9d1a-eb8fcaf1c78f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\smtp">
+      <UniqueIdentifier>{bdeed402-2f54-4ea3-8f25-f3e8663fbe8f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\smtp">
+      <UniqueIdentifier>{d34f52dc-798d-4c26-b23f-25210566d571}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\serialize">
+      <UniqueIdentifier>{b95cc4d7-082e-49f1-bdd3-558cffeb707d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\serialize">
+      <UniqueIdentifier>{db7d254c-c170-46a0-9f09-4820d0565f66}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

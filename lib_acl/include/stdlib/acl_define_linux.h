@@ -29,7 +29,7 @@
 # define ACL_USE_PATHS_H
 # ifndef MINGW
 #  define ACL_HAS_FLOCK_LOCK
-#  define ACL_HAS_SPINLOCK
+/* #  define ACL_HAS_SPINLOCK */
 # endif
 
 # define ACL_HAS_FCNTL_LOCK
@@ -54,7 +54,7 @@ typedef long int ssize_t;
 
 # ifndef ACL_WAIT_STATUS_T
  typedef int ACL_WAIT_STATUS_T;
-#  define ACL_NORMAL_EXIT_STATUS(status)      ((status) == 0)
+#  define ACL_NORMAL_EXIT_STATUS(status)      !(status)
 # endif
 
 # define ACL_FIONREAD_IN_TERMIOS_H

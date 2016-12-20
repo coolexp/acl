@@ -1,8 +1,10 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/stdlib/locker.hpp"
 #include "acl_cpp/connpool/connect_client.hpp"
 #include "acl_cpp/connpool/connect_pool.hpp"
+#endif
 
 namespace acl
 {
@@ -11,6 +13,8 @@ connect_pool::connect_pool(const char* addr, size_t max, size_t idx /* = 0 */)
 : alive_(true)
 , delay_destroy_(false)
 , last_dead_(0)
+, conn_timeout_(30)
+, rw_timeout_(30)
 , idx_(idx)
 , max_(max)
 , count_(0)
@@ -22,10 +26,6 @@ connect_pool::connect_pool(const char* addr, size_t max, size_t idx /* = 0 */)
 , last_(0)
 {
 	retry_inter_ = 1;
-
-	if (max_ < 1)
-		max_ = 10;
-
 	ACL_SAFE_STRNCPY(addr_, addr, sizeof(addr_));
 }
 
@@ -34,6 +34,13 @@ connect_pool::~connect_pool()
 	std::list<connect_client*>::iterator it = pool_.begin();
 	for (; it != pool_.end(); ++it)
 		delete *it;
+}
+
+connect_pool& connect_pool::set_timeout(int conn_timeout, int rw_timeout)
+{
+	conn_timeout_ = conn_timeout;
+	rw_timeout_ = rw_timeout;
+	return *this;
 }
 
 connect_pool& connect_pool::set_idle_ttl(time_t ttl)
@@ -110,7 +117,7 @@ connect_client* connect_pool::peek()
 		lock_.unlock();
 		return conn;
 	}
-	else if (count_ >= max_)
+	else if (max_ > 0 && count_ >= max_)
 	{
 		logger_error("too many connections, max: %d, curr: %d,"
 			" server: %s", (int) max_, (int) count_, addr_);
@@ -120,6 +127,9 @@ connect_client* connect_pool::peek()
 
 	// 调用虚函数的子类实现方法，创建新连接对象，并打开连接
 	conn = create_connect();
+	// 在调用 open 之前先设置超时时间
+	conn->set_timeout(conn_timeout_, rw_timeout_);
+	// 调用子类方法打开连接
 	if (conn->open() == false)
 	{
 		delete conn;
@@ -211,7 +221,8 @@ int connect_pool::check_idle(time_t ttl, bool exclusive /* = true */)
 		lock_.lock();
 	if (pool_.empty())
 	{
-		lock_.unlock();
+		if (exclusive)
+			lock_.unlock();
 		return 0;
 	}
 
@@ -226,7 +237,8 @@ int connect_pool::check_idle(time_t ttl, bool exclusive /* = true */)
 		};
 		pool_.clear();
 		count_ = 0;
-		lock_.unlock();
+		if (exclusive)
+			lock_.unlock();
 		return n;
 	}
 
@@ -257,7 +269,8 @@ int connect_pool::check_idle(time_t ttl, bool exclusive /* = true */)
 		count_--;
 	}
 
-	lock_.unlock();
+	if (exclusive)
+		lock_.unlock();
 	return n;
 }
 

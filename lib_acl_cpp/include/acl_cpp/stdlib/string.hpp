@@ -10,6 +10,8 @@ struct ACL_LINE_STATE;
 
 namespace acl {
 
+class dbuf_pool;
+
 /**
  * 该类为字符串处理类，支持大部分 std::string 中的功能，同时支持其不支持的一些
  * 功能；该类内部自动保证最后一个字符为 \0
@@ -46,6 +48,19 @@ public:
 	 * @param n {size_t} s 缓冲区数据长度
 	 */
 	string(const void* s, size_t n);
+
+#if defined(_WIN32) || defined(_WIN64)
+	/**
+	 * 采用内存映射文件方式构造对象
+	 * @param fd {int} 文件句柄
+	 * @param max {size_t} 所映射的最大空间大小
+	 * @param n {size_t} 初始化大小
+	 */
+	string(void* fd, size_t max, size_t n);
+#else
+	string(int fd, size_t max, size_t n);
+#endif
+
 	virtual ~string(void);
 
 	/**
@@ -586,6 +601,14 @@ public:
 	/**
 	 * 比较两个字符串对象的内容是否相同（区分大小写）
 	 * @param s {const string&} 输入的字符串对象的引用
+	 * @param case_sensitive {bool} 为 true 表示区分大小写
+	 * @return {bool} 返回 true 表示二者相等
+	 */
+	bool equal(const string& s, bool case_sensitive = true) const;
+
+	/**
+	 * 比较两个字符串对象的内容是否相同（区分大小写）
+	 * @param s {const string&} 输入的字符串对象的引用
 	 * @return {int} 0：表示二者相同； > 0：当前字符串内容大于输入的内容；
 	 *  < 0 ：当前字符串内容小于输入的内容
 	 */
@@ -801,18 +824,22 @@ public:
 	/**
 	 * 将当前对象存储的字符串进行分割
 	 * @param sep {const char*} 进行分割时的分割标记
+	 * @param quoted {bool} 当为 true 时，则对于由单/双引号引起来的
+	 *  字符串内容，不做分割，但此时要求 sep 中不得存在单/双号
 	 * @return {std::list<string>&} 返回 list 格式的分割结果，返回的结果
 	 *  不需要释放，其引用了当前对象的一个内部指针
 	 */
-	std::list<string>& split(const char* sep);
+	std::list<string>& split(const char* sep, bool quoted = false);
 
 	/**
 	 * 将当前对象存储的字符串进行分割
 	 * @param sep {const char*} 进行分割时的分割标记
+	 * @param quoted {bool} 当为 true 时，则对于由单/双引号引起来的
+	 *  字符串内容，不做分割，但此时要求 sep 中不得存在单/双号
 	 * @return {std::vector<string>&} 返回 vector 格式的分割结果，返回的
 	 *  结果不需要释放，其引用了当前对象的一个内部指针
 	 */
-	std::vector<string>& split2(const char* sep);
+	std::vector<string>& split2(const char* sep, bool quoted = false);
 
 	/**
 	 * 以 '=' 为分隔符将当前对象存储的字符串分割成 name/value 对，分割时会
@@ -1077,16 +1104,21 @@ public:
 	/**
 	 * 将输入的源数据进行 url 编码并存入当前对象的缓冲区中
 	 * @param s {const char*} 源数据
+	 * @param dbuf {dbuf_pool*} 内存池对象，如果非空，则内部的动态内存在
+	 *  该对象上分配且当调用者在释放该对象时内部临时动态内存随之被释放，
+	 *  否则使用 acl_mymalloc 分配并自动释放
 	 * @return {string&} 当前对象的引用
 	 */
-	string& url_encode(const char* s);
+	string& url_encode(const char* s, dbuf_pool* dbuf = NULL);
 
 	/**
 	 * 将输入的用 url 编码的源数据解码并存入当前对象的缓冲区中
 	 * @param s {const char*} 经 url 编码的源数据
+	 * @param dbuf {dbuf_pool*} 内存池对象，如果非空，则内部的动态内存在
+	 *  该对象上分配且当调用者在释放该对象时内部临时动态内存随之被释放，
 	 * @return {string&} 当前对象的引用
 	 */
-	string& url_decode(const char* s);
+	string& url_decode(const char* s, dbuf_pool* dbuf = NULL);
 
 	/**
 	 * 将源数据进行 H2B 编码并存入当前对象的缓冲区中

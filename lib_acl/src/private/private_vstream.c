@@ -2,7 +2,6 @@
 #ifndef ACL_PREPARE_COMPILE
 
 #include "stdlib/acl_define.h"
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -244,12 +243,12 @@ int private_vstream_gets(ACL_VSTREAM *stream, void *vptr, size_t maxlen)
 	if (stream == NULL || vptr == NULL || maxlen <= 0)
 		return (ACL_VSTREAM_EOF);
 
+	stream->flag &= ~ACL_VSTREAM_FLAG_TAGYES;
+
 	ptr = (unsigned char *) vptr;
 	for (n = 1; n < (int) maxlen; n++) {  /* left one byte for '\0' */
 		ch = private_vstream_getc(stream);
 		if (ch == ACL_VSTREAM_EOF) {
-			stream->flag &= ~ACL_VSTREAM_FLAG_TAGYES;
-			stream->flag |= ACL_VSTREAM_FLAG_TAGNO;
 			if (n == 1)
 				return (ACL_VSTREAM_EOF);/* EOF, nodata read */
 			break;		/* EOF, some data was read */
@@ -257,7 +256,6 @@ int private_vstream_gets(ACL_VSTREAM *stream, void *vptr, size_t maxlen)
 			*ptr++ = ch;
 			if (ch == '\n'){	/* newline is stored, like fgets() */
 				stream->flag |= ACL_VSTREAM_FLAG_TAGYES;
-				stream->flag &= ~ACL_VSTREAM_FLAG_TAGNO;
 				break;
 			}
 		}
@@ -275,12 +273,12 @@ int private_vstream_gets_nonl(ACL_VSTREAM *stream, void *vptr, size_t maxlen)
 	if (stream == NULL || vptr == NULL || maxlen <= 0)
 		return (ACL_VSTREAM_EOF);
 
+	stream->flag &= ~ACL_VSTREAM_FLAG_TAGYES;
+
 	ptr = (unsigned char *) vptr;
 	for (n = 1; n < (int) maxlen; n++) {
 		ch = private_vstream_getc(stream);
 		if (ch == ACL_VSTREAM_EOF) {
-			stream->flag &= ~ACL_VSTREAM_FLAG_TAGYES;
-			stream->flag |= ACL_VSTREAM_FLAG_TAGNO;
 			if (n == 1)
 				return (ACL_VSTREAM_EOF);  /* EOF, nodata read */
 			else
@@ -289,8 +287,7 @@ int private_vstream_gets_nonl(ACL_VSTREAM *stream, void *vptr, size_t maxlen)
 			*ptr++ = ch;
 			if (ch == '\n') {
 				stream->flag |= ACL_VSTREAM_FLAG_TAGYES;
-				stream->flag &= ~ACL_VSTREAM_FLAG_TAGNO;
-				break;		/* newline is stored, like fgets() */
+				break;	/* newline is stored, like fgets() */
 			}
 		}
 	}

@@ -26,7 +26,7 @@ public:
 	 * default constructor. You must set the communication method by
 	 * set_client or set_cluster functions.
 	 */
-	redis_command();
+	redis_command(void);
 
 	/**
 	 * 当使用非集群模式时的构造函数，可以使用此构造函数设置 redis 通信类对象。
@@ -43,12 +43,23 @@ public:
 	 * cluster mode.
 	 * @param cluster {redis_client_cluster*} redis 集群连接对象
 	 *  redis cluster object in cluster mode
-	 * @param max_conns {size_t} 与集群中所有结点之间的每个连接池的最大连接数
-	 *  the max of every connection pool with all the redis nodes
+	 * @param max_conns {size_t} 与集群中所有结点之间的每个连接池的最大连接数，
+	 *  如果该值为 0，则在集群方式下连接池不设连接数上限
+	 *  the max of every connection pool with all the redis nodes,
+	 *  if be set 0, then there is no connections limit in
+	 *  connections pool.
 	 */
 	redis_command(redis_client_cluster* cluster, size_t max_conns);
 
-	virtual ~redis_command() = 0;
+	virtual ~redis_command(void);
+
+	/**
+	 * 在进行每个命令处理前，是否要求检查 socket 句柄与地址的匹配情况，当
+	 * 打开该选项时，将会严格检查匹配情况，但会影响一定性能，因此该设置仅
+	 * 用在 DEBUG 时的运行场景
+	 * @param on {bool}
+	 */
+	void set_check_addr(bool on);
 
 	/**
 	 * 在重复使用一个继承于 redis_command 的子类操作 redis 时，需要在
@@ -128,9 +139,9 @@ public:
 	 * get memory pool handle be set
 	 * @return {dbuf_pool*}
 	 */
-	dbuf_pool* get_pool() const
+	dbuf_pool* get_dbuf() const
 	{
-		return pool_;
+		return dbuf_;
 	}
 
 	/**
@@ -281,9 +292,31 @@ public:
 	 */
 	void set_slice_respond(bool on);
 
+public:
+	/**
+	 * 直接组合 redis 协议命令方式，从 redis 服务器获得结果
+	 * @param argc {size_t} 后面数组中数组元素个数
+	 * @param argv {const char*[]} redis 命令组成的数组
+	 * @param lens {size_t[]} argv 中数组元素的长度
+	 * @param nchild {size_t} 有的 redis 命令需要获取多个结果集，如：subop
+	 * @return {const redis_result*} 返回的结果集
+	 */
+	const redis_result* request(size_t argc, const char* argv[],
+		size_t lens[], size_t nchild = 0);
+
+	/**
+	 * 直接组合 redis 协议命令方式，从 redis 服务器获得结果
+	 * @param args {const std::vector<string>&} redis 命令组成的数组
+	 * @param nchild {size_t} 有的 redis 命令需要获取多个结果集，如：subop
+	 * @return {const redis_result*} 返回的结果集
+	 */
+	const redis_result* request(const std::vector<string>& args,
+		size_t nchind = 0);
+
 protected:
-	const redis_result* run(size_t nchild = 0);
-	const redis_result* run(redis_client_cluster* cluster, size_t nchild);
+	const redis_result* run(size_t nchild = 0, int* timeout = NULL);
+	const redis_result* run(redis_client_cluster* cluster,
+		size_t nchild, int* timeout = NULL);
 
 	void build_request(size_t argc, const char* argv[], size_t lens[]);
 	void clear_request();
@@ -354,21 +387,22 @@ protected:
 
 	/************************** common *********************************/
 protected:
-	dbuf_pool* pool_;
+	dbuf_pool* dbuf_;
 
 	// 根据键值计算哈希槽值
 	void hash_slot(const char* key);
 	void hash_slot(const char* key, size_t len);
 
 private:
-	char  addr_[32];
+	bool check_addr_;
+	char addr_[32];
 	redis_client* conn_;
 	redis_client_cluster* cluster_;
 	size_t max_conns_;
 	unsigned long long used_;
-	int slot_;
-	int redirect_max_;
-	int redirect_sleep_;
+	int  slot_;
+	int  redirect_max_;
+	int  redirect_sleep_;
 
 	redis_client* peek_conn(redis_client_cluster* cluster, int slot);
 	redis_client* redirect(redis_client_cluster* cluster, const char* addr);
@@ -394,6 +428,8 @@ private:
 	/************************** respond ********************************/
 	bool slice_res_;
 	const redis_result* result_;
+
+	void logger_result(const redis_result* result);
 };
 
 } // namespace acl

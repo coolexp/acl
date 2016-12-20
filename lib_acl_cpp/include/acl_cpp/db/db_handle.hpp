@@ -223,7 +223,7 @@ class query;
 class ACL_CPP_API db_handle : public connect_client
 {
 public:
-	db_handle(const char* charset = "utf8");
+	db_handle(void);
 	virtual ~db_handle(void);
 
 	/////////////////////////////////////////////////////////////////////
@@ -235,22 +235,6 @@ public:
 	bool open();
 
 	/////////////////////////////////////////////////////////////////////
-
-	/**
-	 * 设置字符集
-	 * @param charset {const char*} 字符集，非 NULL 字符串
-	 * @return {db_handle&}
-	 */
-	db_handle& set_charset(const char* charset);
-
-	/**
-	 * 获得当前数据库句柄的字符集
-	 * @return {const char*}
-	 */
-	const char* get_charset() const
-	{
-		return charset_.c_str();
-	}
 
 	/**
 	 * 返回数据库的类型描述
@@ -278,10 +262,10 @@ public:
 
 	/**
 	 * 纯虚接口，子类必须实现此接口用于打开数据库
-	 * @param local_charset {const char*} 本地字符集(gbk, utf8, ...)
+	 * @param charset {const char*} 打开数据库连接时采用的字符集
 	 * @return {bool} 打开是否成功
 	 */
-	virtual bool dbopen(const char* local_charset) = 0;
+	virtual bool dbopen(const char* charset = NULL) = 0;
 
 	/**
 	 * 数据库是否已经打开了
@@ -399,9 +383,11 @@ public:
 	const db_row* get_first_row() const;
 
 	/**
-	 * 释放上次查询的结果，当查询完成后，必须调用该函数来释放
-	 * 不次查询的结果，该函数被多次调用并无害处，因为当第一次
-	 * 调用时会自动将内部变量 result_ 置空
+	 * 释放上次查询的结果，当查询完成后，调用该函数来释放上次查询的结果，该函数被
+	 * 多次调用并无害处，因为当第一次调用时会自动将内部变量 result_ 置空,
+	 * 另外，要求子类必须在每次执行 SQL 查询前先调用此方法，以免用户忘记
+	 * 调用而造成内存泄露；此外，本类对象在析构时会自动再调用本方法释放可能
+	 * 未释放的内存
 	 */
 	void free_result();
 
@@ -477,9 +463,6 @@ public:
 	static const char* get_loadpath();
 
 protected:
-	// 连接数据库所用的字符集
-	string charset_;
-
 	// 临时结果对象
 	db_rows* result_;
 

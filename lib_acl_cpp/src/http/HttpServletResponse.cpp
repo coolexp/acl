@@ -1,13 +1,15 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
+#include "acl_cpp/stdlib/dbuf_pool.hpp"
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/stdlib/string.hpp"
 #include "acl_cpp/stream/ostream.hpp"
 #include "acl_cpp/stream/socket_stream.hpp"
 #include "acl_cpp/http/http_header.hpp"
 #include "acl_cpp/http/http_client.hpp"
-#include "acl_cpp/http/HttpServlet.hpp"
 #include "acl_cpp/http/HttpServletRequest.hpp"
 #include "acl_cpp/http/HttpServletResponse.hpp"
+#endif
 
 namespace acl
 {
@@ -16,8 +18,13 @@ HttpServletResponse::HttpServletResponse(socket_stream& stream)
 : stream_(stream)
 , request_(NULL)
 {
-	client_ = NEW http_client(&stream_, stream_.get_rw_timeout());
-	header_ = NEW http_header();
+	dbuf_internal_ = new dbuf_guard;
+	dbuf_ = dbuf_internal_;
+
+	client_ = new (dbuf_->dbuf_alloc(sizeof(http_client)))
+		http_client(&stream_, false, true);
+	header_ = dbuf_->create<http_header, dbuf_guard*>(dbuf_);
+
 	header_->set_request_mode(false);
 	charset_[0] = 0;
 	safe_snprintf(content_type_, sizeof(content_type_), "text/html");
@@ -26,8 +33,8 @@ HttpServletResponse::HttpServletResponse(socket_stream& stream)
 
 HttpServletResponse::~HttpServletResponse(void)
 {
-	delete client_;
-	delete header_;
+	client_->~http_client();
+	delete dbuf_internal_;
 }
 
 HttpServletResponse& HttpServletResponse::setRedirect(
@@ -219,6 +226,11 @@ void HttpServletResponse::encodeUrl(string& out, const char* url)
 }
 
 ostream& HttpServletResponse::getOutputStream(void) const
+{
+	return stream_;
+}
+
+socket_stream& HttpServletResponse::getSocketStream(void) const
 {
 	return stream_;
 }

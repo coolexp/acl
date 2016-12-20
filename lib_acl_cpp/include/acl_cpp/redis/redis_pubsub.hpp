@@ -17,7 +17,7 @@ public:
 	/**
 	 * see redis_command::redis_command()
 	 */
-	redis_pubsub();
+	redis_pubsub(void);
 
 	/**
 	 * see redis_command::redis_command(redis_client*)
@@ -25,11 +25,11 @@ public:
 	redis_pubsub(redis_client* conn);
 
 	/**
-	 * see redis_command::redis_command(redis_client_cluster*， size_t)
+	 * see redis_command::redis_command(redis_client_cluster*, size_t)
 	 */
-	redis_pubsub(redis_client_cluster* cluster, size_t max_conns);
+	redis_pubsub(redis_client_cluster* cluster, size_t max_conns = 0);
 
-	virtual ~redis_pubsub();
+	virtual ~redis_pubsub(void);
 
 	/////////////////////////////////////////////////////////////////////
 
@@ -121,10 +121,13 @@ public:
 	 *  buffer for storing the channel associate with the msg
 	 * @param msg {string&} 存放当前获得的消息内容
 	 *  store the message posted to the channel
+	 * @param message_type {string*} will store messsage or pmessage
+	 * @param pattern {string*} will store pattern set by psubscribe
 	 * @return {bool} 是否成功，如果返回 false 则表示出错
 	 *  true on success, false on error
 	 */
-	bool get_message(string& channel, string& msg);
+	bool get_message(string& channel, string& msg,
+		string* message_type = NULL, string* pattern = NULL);
 
 	/**
 	 * 列出当前的活跃频道：活跃频道指的是那些至少有一个订阅者的频道， 订阅模式的

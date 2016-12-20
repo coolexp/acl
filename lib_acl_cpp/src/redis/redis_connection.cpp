@@ -1,8 +1,10 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/string.hpp"
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/redis/redis_client.hpp"
 #include "acl_cpp/redis/redis_connection.hpp"
+#endif
 
 namespace acl
 {
@@ -17,7 +19,8 @@ redis_connection::redis_connection(redis_client* conn)
 {
 }
 
-redis_connection::redis_connection(redis_client_cluster* cluster, size_t max_conns)
+redis_connection::redis_connection(
+	redis_client_cluster* cluster, size_t max_conns)
 : redis_command(cluster, max_conns)
 {
 }

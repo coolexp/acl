@@ -1,18 +1,15 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/mime/mime_quoted_printable.hpp"
+#endif
 
 namespace acl {
 
 #define CU_CHAR_PTR(x)	((const unsigned char *) (x))
 
-mime_quoted_printable::mime_quoted_printable()
-{
-	m_addCrLf = true;
-	m_addInvalid = false;
-	reset();
-}
-
-mime_quoted_printable::mime_quoted_printable(bool addCrlf, bool addInvalid)
+mime_quoted_printable::mime_quoted_printable(
+	bool addCrlf /* = false */, bool addInvalid /* = false */)
+	: mime_code(addCrlf, addInvalid, "quoted-printable")
 {
 	m_addCrLf = addCrlf;
 	m_addInvalid = addInvalid;

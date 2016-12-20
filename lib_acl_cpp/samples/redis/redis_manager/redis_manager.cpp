@@ -8,7 +8,7 @@ static bool test_del(acl::redis_key& redis, int i)
 
 	key.format("%s_%d", __keypre.c_str(), i);
 	redis.clear();
-	int ret = redis.del(key.c_str(), NULL);
+	int ret = redis.del(key.c_str());
 	if (ret < 0)
 	{
 		printf("del key: %s error\r\n", key.c_str());
@@ -217,8 +217,8 @@ int main(int argc, char* argv[])
 
 	acl::acl_cpp_init();
 
-	acl::redis_client_cluster manager(conn_timeout, rw_timeout);
-	manager.set(addr.c_str(), max_threads);
+	acl::redis_client_cluster manager;
+	manager.set(addr.c_str(), max_threads, conn_timeout, rw_timeout);
 
 	std::vector<test_thread*> threads;
 	for (int i = 0; i < max_threads; i++)

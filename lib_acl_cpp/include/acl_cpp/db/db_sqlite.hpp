@@ -12,7 +12,11 @@ class charset_conv;
 class ACL_CPP_API db_sqlite : public db_handle
 {
 public:
-	db_sqlite(const char* dbfile);
+	/**
+	 * 构造函数
+	 * @param charset {const char*} 本地字符集(gbk, utf-8, ...)
+	 */
+	db_sqlite(const char* dbfile, const char* charset = "utf-8");
 	~db_sqlite(void);
 
 	/**
@@ -63,9 +67,9 @@ public:
 		return db_;
 	}
 
-	/************************************************************************/
-	/*            以下为基类 db_handle 的虚接口                             */
-	/************************************************************************/
+	/********************************************************************/
+	/*            以下为基类 db_handle 的虚接口                         */
+	/********************************************************************/
 
 	/**
 	 * 返回数据库的类型描述
@@ -87,10 +91,11 @@ public:
 
 	/**
 	 * 基类 db_handle 的纯虚接口
-	 * @param local_charset {const char*} 本地字符集(gbk, utf-8, ...)
+	 * @param charset {const char*} 打开数据库连接时采用的字符集，当该
+	 *  参数非空时将会覆盖构造函数中传入的字符集
 	 * @return {bool} 打开是否成功
 	 */
-	bool dbopen(const char* local_charset);
+	bool dbopen(const char* charset = NULL);
 
 	/**
 	 * 基类 db_handle 的纯虚接口，数据库是否已经打开了
@@ -143,7 +148,7 @@ private:
 	charset_conv* conv_;
 
 	// 本地字符集
-	string local_charset_;
+	string charset_;
 
 	// 真正执行SQL查询的函数
 	bool exec_sql(const char* sql);

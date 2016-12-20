@@ -1,4 +1,5 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include <vector>
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/redis/redis_cluster.hpp"
@@ -6,15 +7,13 @@
 #include "acl_cpp/redis/redis_client.hpp"
 #include "acl_cpp/redis/redis_client_pool.hpp"
 #include "acl_cpp/redis/redis_client_cluster.hpp"
+#endif
 
 namespace acl
 {
 
-redis_client_cluster::redis_client_cluster(int conn_timeout /* = 30 */,
-	int rw_timeout /* = 30 */, int max_slot /* = 16384 */)
-: conn_timeout_(conn_timeout)
-, rw_timeout_(rw_timeout)
-, max_slot_(max_slot)
+redis_client_cluster::redis_client_cluster(int max_slot /* = 16384 */)
+: max_slot_(max_slot)
 , redirect_max_(15)
 , redirect_sleep_(100)
 {
@@ -45,7 +44,15 @@ connect_pool* redis_client_cluster::create_pool(const char* addr,
 	size_t count, size_t idx)
 {
 	redis_client_pool* pool = NEW redis_client_pool(addr, count, idx);
-	pool->set_timeout(conn_timeout_, rw_timeout_);
+
+	string key(addr);
+	key.lower();
+	std::map<string, string>::const_iterator cit;
+	if ((cit = passwds_.find(key)) != passwds_.end()
+		|| (cit = passwds_.find("default")) != passwds_.end())
+	{
+		pool->set_password(cit->second.c_str());
+	}
 
 	return pool;
 }
@@ -150,6 +157,34 @@ void redis_client_cluster::set_all_slot(const char* addr, int max_conns)
 		for (size_t i = slot_min; i <= slot_max; i++)
 			set_slot((int) i, buf);
 	}
+}
+
+redis_client_cluster& redis_client_cluster::set_password(
+	const char* addr, const char* pass)
+{
+	// 允许 pass 为空字符串且非空指针，这样就可以当 default 值被设置时，
+	// 允许部分 redis 节点无需连接密码
+	if (addr == NULL || *addr == 0 || pass == NULL || *pass == 0)
+		return *this;
+
+	string key(addr);
+	key.lower();
+	passwds_[key] = pass;
+
+	for (std::vector<connect_pool*>::iterator it = pools_.begin();
+		it != pools_.end(); ++it)
+	{
+		redis_client_pool* pool = (redis_client_pool*) (*it);
+		key = pool->get_addr();
+		key.lower();
+
+		std::map<string, string>::const_iterator cit =
+			passwds_.find(key);
+		if (cit != passwds_.end() || !strcasecmp(addr, "default"))
+			pool->set_password(pass);
+	}
+
+	return *this;
 }
 
 } // namespace acl

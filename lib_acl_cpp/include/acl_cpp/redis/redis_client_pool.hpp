@@ -19,25 +19,23 @@ public:
 	 * constructor
 	 * @param addr {const char*} 服务端地址，格式：ip:port
 	 *  the redis-server's listening address, format: ip:port
-	 * @param count {size_t} 连接池的最大连接数限制
-	 *  the max connections for each connection pool
+	 * @param count {size_t} 连接池的最大连接数限制，如果此值为 0，则连接池
+	 *  没有上限限制。
+	 *  the max connections for each connection pool. there is
+	 *  no connections limit of the pool when the count is 0.
 	 * @param idx {size_t} 该连接池对象在集合中的下标位置(从 0 开始)
 	 *  the subscript of the connection pool in the connection cluster
 	 */
 	redis_client_pool(const char* addr, size_t count, size_t idx = 0);
 
-	virtual ~redis_client_pool();
+	virtual ~redis_client_pool(void);
 
 	/**
-	 * 设置网络连接超时时间及网络 IO 读写超时时间(秒)
-	 * set the connect and read/write timeout in seconds
-	 * @param conn_timeout {int} 连接超时时间
-	 *  the timeout to connect in seconds
-	 * @param rw_timeout {int} 网络 IO 读写超时时间(秒)
-	 *  the timeout to read/write in seconds
+	 * 设置连接 redis 服务器的连接密码
+	 * @param pass {const char*} 连接密码
 	 * @return {redis_client_pool&}
 	 */
-	redis_client_pool& set_timeout(int conn_timeout, int rw_timeout);
+	redis_client_pool& set_password(const char* pass);
 
 protected:
 	/**
@@ -48,8 +46,7 @@ protected:
 	connect_client* create_connect();
 
 private:
-	int   conn_timeout_;
-	int   rw_timeout_;
+	char* pass_;
 };
 
 } // namespace acl

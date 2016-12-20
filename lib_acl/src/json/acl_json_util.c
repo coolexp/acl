@@ -13,6 +13,20 @@
 #define STR	acl_vstring_str
 #define	LEN	ACL_VSTRING_LEN
 
+ACL_JSON_NODE *acl_json_getFirstElementByTagName(
+	ACL_JSON *json, const char *tag)
+{
+	ACL_ITER iter;
+
+	acl_foreach(iter, json) {
+		ACL_JSON_NODE *node = (ACL_JSON_NODE*) iter.data;
+		if (strcasecmp(tag, STR(node->ltag)) == 0)
+			return node;
+	}
+
+	return NULL;
+}
+
 void acl_json_free_array(ACL_ARRAY *a)
 {
 	acl_array_destroy(a, NULL);
@@ -96,7 +110,7 @@ ACL_JSON_NODE *acl_json_create_text(ACL_JSON *json,
 
 	acl_vstring_strcpy(node->ltag, name);
 	acl_vstring_strcpy(node->text, value);
-	node->type = ACL_JSON_T_TEXT;
+	node->type = ACL_JSON_T_STRING;
 	return (node);
 }
 
@@ -111,6 +125,16 @@ ACL_JSON_NODE *acl_json_create_bool(ACL_JSON *json,
 	return (node);
 }
 
+ACL_JSON_NODE *acl_json_create_null(ACL_JSON *json, const char *name)
+{
+	ACL_JSON_NODE *node = acl_json_node_alloc(json);
+
+	acl_vstring_strcpy(node->ltag, name);
+	acl_vstring_strcpy(node->text, "null");
+	node->type = ACL_JSON_T_NULL;
+	return (node);
+}
+
 ACL_JSON_NODE *acl_json_create_int64(ACL_JSON *json,
 	const char *name, acl_int64 value)
 {
@@ -119,6 +143,17 @@ ACL_JSON_NODE *acl_json_create_int64(ACL_JSON *json,
 	acl_vstring_strcpy(node->ltag, name);
 	acl_vstring_sprintf(node->text, "%lld", value);
 	node->type = ACL_JSON_T_NUMBER;
+	return (node);
+}
+
+ACL_JSON_NODE *acl_json_create_double(ACL_JSON *json,
+	const char *name, double value)
+{
+	ACL_JSON_NODE *node = acl_json_node_alloc(json);
+
+	acl_vstring_strcpy(node->ltag, name);
+	acl_vstring_sprintf(node->text, "%.4f", value);
+	node->type = ACL_JSON_T_DOUBLE;
 	return (node);
 }
 
@@ -131,11 +166,6 @@ ACL_JSON_NODE *acl_json_create_array_text(ACL_JSON *json, const char *text)
 	return (node);
 }
 
-ACL_JSON_NODE *acl_json_create_string(ACL_JSON *json, const char *text)
-{
-	return acl_json_create_array_text(json, text);
-}
-
 ACL_JSON_NODE *acl_json_create_array_int64(ACL_JSON *json, acl_int64 value)
 {
 	ACL_JSON_NODE *node = acl_json_node_alloc(json);
@@ -145,12 +175,30 @@ ACL_JSON_NODE *acl_json_create_array_int64(ACL_JSON *json, acl_int64 value)
 	return (node);
 }
 
+ACL_JSON_NODE *acl_json_create_array_double(ACL_JSON *json, double value)
+{
+	ACL_JSON_NODE *node = acl_json_node_alloc(json);
+
+	acl_vstring_sprintf(node->text, "%.4f", value);
+	node->type = ACL_JSON_T_A_DOUBLE;
+	return (node);
+}
+
 ACL_JSON_NODE *acl_json_create_array_bool(ACL_JSON *json, int value)
 {
 	ACL_JSON_NODE *node = acl_json_node_alloc(json);
 
 	acl_vstring_strcpy(node->text, value ? "true" : "false");
 	node->type = ACL_JSON_T_A_BOOL;
+	return (node);
+}
+
+ACL_JSON_NODE *acl_json_create_array_null(ACL_JSON *json)
+{
+	ACL_JSON_NODE *node = acl_json_node_alloc(json);
+
+	acl_vstring_strcpy(node->text, "null");
+	node->type = ACL_JSON_T_A_NULL;
 	return (node);
 }
 
@@ -271,15 +319,19 @@ void acl_json_building(ACL_JSON *json, size_t length,
 				ACL_VSTRING_ADDCH(buf, node->left_ch);
 		}
 
-		/* 当结点有标签名时 */
+		/* 当节点有标签名时 */
 		else if (LEN(node->ltag) > 0) {
 			json_escape_append(buf, STR(node->ltag));
 			ACL_VSTRING_ADDCH(buf, ':');
 			ACL_VSTRING_ADDCH(buf, ' ');
 
-			switch (node->type) {
+			switch (node->type & ~ACL_JSON_T_LEAF) {
+			case ACL_JSON_T_NULL:
+				acl_vstring_strcat(buf, "null");
+				break;
 			case ACL_JSON_T_BOOL:
 			case ACL_JSON_T_NUMBER:
+			case ACL_JSON_T_DOUBLE:
 				acl_vstring_strcat(buf, STR(node->text));
 				break;
 			default:
@@ -288,13 +340,17 @@ void acl_json_building(ACL_JSON *json, size_t length,
 			}
 		}
 
-		/* 当结点为数组的成员时 */
+		/* 当节点为数组的成员时 */
 		else if (LEN(node->text) > 0 && node->parent
 			&& node->parent->left_ch != 0)
 		{
-			switch (node->type) {
+			switch (node->type & ~ACL_JSON_T_LEAF) {
+			case ACL_JSON_T_A_NULL:
+				acl_vstring_strcat(buf, "null");
+				break;
 			case ACL_JSON_T_A_BOOL:
 			case ACL_JSON_T_A_NUMBER:
+			case ACL_JSON_T_A_DOUBLE:
 				acl_vstring_strcat(buf, STR(node->text));
 				break;
 			default:
@@ -303,16 +359,16 @@ void acl_json_building(ACL_JSON *json, size_t length,
 			}
 		}
 
-		/* 当结点为没有标签名的容器(为 '{}' 或 '[]')时 */
+		/* 当节点为没有标签名的容器(为 '{}' 或 '[]')时 */
 		else if (node->left_ch != 0) {
 			ACL_VSTRING_ADDCH(buf, node->left_ch);
 		}
 
 		/*
-		 * 遍历方式为前序遍历方式，即先遍历当前结点的子结点，
-		 * 再遍历当前结点的子结点，最后遍历当前结点的父结点
+		 * 遍历方式为前序遍历方式，即先遍历当前节点的子节点，
+		 * 再遍历当前节点的子节点，最后遍历当前节点的父节点
 		 */
-		/* 当本结点有子结点或虽为叶结点，但该结点的下一个兄弟结点
+		/* 当本节点有子节点或虽为叶节点，但该节点的下一个兄弟节点
 		 * 非空时继续下一个循环过程
 		 */
 		if (acl_ring_size(&node->children) > 0)
@@ -326,9 +382,9 @@ void acl_json_building(ACL_JSON *json, size_t length,
 		if (node->right_ch > 0)
 			ACL_VSTRING_ADDCH(buf, node->right_ch);
 
-		/* 当本结点为叶结点且后面没有兄弟结点时，需要一级一级回溯
-		 * 将父结点的分隔符添加至本叶结点尾部，直到遇到根结点或父
-		 * 结点的下一个兄弟结点非空
+		/* 当本节点为叶节点且后面没有兄弟节点时，需要一级一级回溯
+		 * 将父节点的分隔符添加至本叶节点尾部，直到遇到根节点或父
+		 * 节点的下一个兄弟节点非空
 		 */
 		while (acl_json_node_next(node) == NULL) {
 			if (node->parent == json->root)
@@ -390,15 +446,19 @@ ACL_VSTRING *acl_json_build(ACL_JSON *json, ACL_VSTRING *buf)
 				ACL_VSTRING_ADDCH(buf, node->left_ch);
 		}
 
-		/* 当结点有标签名时 */
+		/* 当节点有标签名时 */
 		else if (LEN(node->ltag) > 0) {
 			json_escape_append(buf, STR(node->ltag));
 			ACL_VSTRING_ADDCH(buf, ':');
 			ACL_VSTRING_ADDCH(buf, ' ');
 
-			switch (node->type) {
+			switch (node->type & ~ACL_JSON_T_LEAF) {
+			case ACL_JSON_T_NULL:
+				acl_vstring_strcat(buf, "null");
+				break;
 			case ACL_JSON_T_BOOL:
 			case ACL_JSON_T_NUMBER:
+			case ACL_JSON_T_DOUBLE:
 				acl_vstring_strcat(buf, STR(node->text));
 				break;
 			default:
@@ -407,13 +467,20 @@ ACL_VSTRING *acl_json_build(ACL_JSON *json, ACL_VSTRING *buf)
 			}
 		}
 
-		/* 当结点为数组的成员时 */
+		/* 当节点为数组的成员时 */
 		else if (LEN(node->text) > 0 && node->parent
-			&& node->parent->left_ch != 0)
+			/* 应该依据父节点类型来确定当前节点是否为数组节点
+			 * && node->parent->left_ch != 0)
+			 */
+			&& node->parent->type == ACL_JSON_T_ARRAY)
 		{
-			switch (node->type) {
+			switch (node->type & ~ACL_JSON_T_LEAF) {
+			case ACL_JSON_T_A_NULL:
+				acl_vstring_strcat(buf, "null");
+				break;
 			case ACL_JSON_T_A_BOOL:
 			case ACL_JSON_T_A_NUMBER:
+			case ACL_JSON_T_A_DOUBLE:
 				acl_vstring_strcat(buf, STR(node->text));
 				break;
 			default:
@@ -422,16 +489,16 @@ ACL_VSTRING *acl_json_build(ACL_JSON *json, ACL_VSTRING *buf)
 			}
 		}
 
-		/* 当结点为没有标签名的容器(为 '{}' 或 '[]')时 */
+		/* 当节点为没有标签名的容器(为 '{}' 或 '[]')时 */
 		else if (node->left_ch != 0) {
 			ACL_VSTRING_ADDCH(buf, node->left_ch);
 		}
 
 		/*
-		 * 遍历方式为前序遍历方式，即先遍历当前结点的子结点，
-		 * 再遍历当前结点的子结点，最后遍历当前结点的父结点
+		 * 遍历方式为前序遍历方式，即先遍历当前节点的子节点，
+		 * 再遍历当前节点的子节点，最后遍历当前节点的父节点
 		 */
-		/* 当本结点有子结点或虽为叶结点，但该结点的下一个兄弟结点
+		/* 当本节点有子节点或虽为叶节点，但该节点的下一个兄弟节点
 		 * 非空时继续下一个循环过程
 		 */
 		if (acl_ring_size(&node->children) > 0)
@@ -445,9 +512,9 @@ ACL_VSTRING *acl_json_build(ACL_JSON *json, ACL_VSTRING *buf)
 		if (node->right_ch > 0)
 			ACL_VSTRING_ADDCH(buf, node->right_ch);
 
-		/* 当本结点为叶结点且后面没有兄弟结点时，需要一级一级回溯
-		 * 将父结点的分隔符添加至本叶结点尾部，直到遇到根结点或父
-		 * 结点的下一个兄弟结点非空
+		/* 当本节点为叶节点且后面没有兄弟节点时，需要一级一级回溯
+		 * 将父节点的分隔符添加至本叶节点尾部，直到遇到根节点或父
+		 * 节点的下一个兄弟节点非空
 		 */
 		while (acl_json_node_next(node) == NULL) {
 			if (node->parent == json->root)

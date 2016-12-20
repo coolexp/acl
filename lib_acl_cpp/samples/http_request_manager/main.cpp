@@ -21,17 +21,19 @@ static void sleep_while(int n)
 // 初始化过程
 static void init(const char* addrs, int count)
 {
+	int  cocurrent = 100, conn_timeout = 100, rw_timeout = 200;
+
 	// 创建 HTTP 请求连接池集群管理对象
 	__conn_manager = new http_request_manager();
 
 	// 添加服务器集群地址
-	__conn_manager->init(addrs, addrs, 100);
+	__conn_manager->init(addrs, addrs, cocurrent, conn_timeout, rw_timeout);
 
 	printf(">>>start monitor thread\r\n");
 
-	int  check_inter = 1, conn_timeout = 5;
+	int  check_inter = 1, check_conn_timeout = 5;
 	acl::connect_monitor* monitor = new acl::connect_monitor(*__conn_manager);
-	(*monitor).set_check_inter(check_inter).set_conn_timeout(conn_timeout);
+	(*monitor).set_check_inter(check_inter).set_conn_timeout(check_conn_timeout);
 
 	// 启动后台检测线程
 	__conn_manager->start_monitor(monitor);
@@ -155,9 +157,6 @@ static void thread_main(void*)
 			check_all_connections();
 			exit (1);
 		}
-
-		// 设置连接的超时时间及读超时时间
-		pool->set_timeout(2, 2);
 
 		// 从连接池中获取一个 HTTP 连接
 		http_request* conn = (http_request*) pool->peek();

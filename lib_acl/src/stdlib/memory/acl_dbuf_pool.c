@@ -17,14 +17,19 @@
 
 typedef struct ACL_DBUF {
         struct ACL_DBUF *next;
-        char *ptr;
-        char  buf_addr[1];
+	short  used;
+	short  keep;
+	size_t size;
+        char  *addr;
+        char   buf[1];
 } ACL_DBUF;
 
 struct ACL_DBUF_POOL {
         size_t block_size;
+	size_t off;
+	size_t huge;
         ACL_DBUF *head;
-	char  buf_addr[1];
+	char  buf[1];
 };
 
 ACL_DBUF_POOL *acl_dbuf_pool_create(size_t block_size)
@@ -48,8 +53,15 @@ ACL_DBUF_POOL *acl_dbuf_pool_create(size_t block_size)
 #endif
 
 	size = (block_size / (size_t) page_size) * (size_t) page_size;
-	if (size == 0)
+	if (size < (size_t) page_size)
 		size = page_size;
+
+	/* xxx: 为了尽量保证在调用 acl_mymalloc 分配内存时为内存页的整数倍，
+	 * 需要减去 sizeof(ACL_DBUF) 和 16 字节，其中 16 字节是 acl_mymalloc
+	 * 内部给每个内存块额外添加的控制头，在 acl_mymalloc 内部 16 字节为：
+	 * offsetof(MBLOCK, u.payload[0])
+	 */
+	size -= 16 + sizeof(ACL_DBUF);
 
 #ifdef	USE_VALLOC
 	pool = (ACL_DBUF_POOL*) valloc(sizeof(struct ACL_DBUF_POOL)
@@ -60,9 +72,15 @@ ACL_DBUF_POOL *acl_dbuf_pool_create(size_t block_size)
 #endif
 
 	pool->block_size = size;
-	pool->head = (ACL_DBUF*) pool->buf_addr;
+	pool->off        = 0;
+	pool->huge       = 0;
+	pool->head       = (ACL_DBUF*) pool->buf;
 	pool->head->next = NULL;
-	pool->head->ptr = pool->head->buf_addr;
+	pool->head->keep = 1;
+	pool->head->used = 0;
+	pool->head->size = size;
+	pool->head->addr = pool->head->buf;
+
 	return pool;
 }
 
@@ -73,8 +91,10 @@ void acl_dbuf_pool_destroy(ACL_DBUF_POOL *pool)
 	while (iter) {
 		tmp = iter;
 		iter = iter->next;
-		if ((char*) tmp == pool->buf_addr)
+		if ((char*) tmp == pool->buf)
 			break;
+		if (tmp->size > pool->block_size)
+			pool->huge--;
 #ifdef	USE_VALLOC
 		free(tmp);
 #else
@@ -89,31 +109,101 @@ void acl_dbuf_pool_destroy(ACL_DBUF_POOL *pool)
 #endif
 }
 
-void acl_dbuf_pool_reset(ACL_DBUF_POOL *pool, size_t off)
+int acl_dbuf_pool_reset(ACL_DBUF_POOL *pool, size_t off)
 {
+	size_t n;
 	ACL_DBUF *iter = pool->head, *tmp;
 
-	while (iter) {
-		tmp = iter;
-		iter = iter->next;
-		if ((char*) tmp == pool->buf_addr)
+	if (off > pool->off) {
+		acl_msg_warn("warning: %s(%d) off(%ld) > pool->off(%ld)",
+			__FUNCTION__, __LINE__, (long) off, (long) pool->off);
+		return -1;
+	} else if (off == pool->off)
+		return 0;
+
+	while (1) {
+		/* 如果当前内存块有保留内存区，则保留整个内存块 */
+		if (iter->keep)
 			break;
+
+		/* 计算当前内存块被使用的内存大小 */
+		n = iter->addr - iter->buf;
+
+		/* 当 off 相对偏移量在当前内存块时，则退出循环 */
+		if (pool->off <= off + n) {
+			iter->addr -= pool->off - off;
+			pool->off  = off;
+			break;
+		}
+
+		/* 保留当前内存块指针以便于下面进行释放 */
+		tmp = iter;
+		/* 指向下一个内存块地址 */
+		iter = iter->next;
+
+		pool->head = iter;
+
+		/* off 为下一个内存块的 addr 所在的相对偏移位置  */
+		pool->off -=n;
+
+		if (tmp->size > pool->block_size)
+			pool->huge--;
+
 #ifdef	USE_VALLOC
 		free(tmp);
 #else
 		acl_myfree(tmp);
 #endif
 	}
-	pool->head = (ACL_DBUF*) pool->buf_addr;
-	pool->head->next = NULL;
 
-	if (pool->head->buf_addr + off >= (char*) pool + pool->block_size)
-		acl_msg_fatal("%s(%d) off(%ld) too big, should < %ld",
-			__FUNCTION__, __LINE__, (long) off, (long)
-			((char*) pool + pool->block_size
-			 - pool->head->buf_addr));
+	return 0;
+}
 
-	pool->head->ptr = pool->head->buf_addr + off;
+int acl_dbuf_pool_free(ACL_DBUF_POOL *pool, const void *addr)
+{
+	const char *ptr = (const char*) addr;
+	ACL_DBUF *iter = pool->head, *prev = iter;
+
+	while (iter) {
+		if (ptr < iter->addr && ptr >= iter->buf) {
+			iter->used--;
+			break;
+		}
+
+		prev = iter;
+		iter = iter->next;
+	}
+
+	if (iter == NULL) {
+		acl_msg_warn("warning: %s(%d), not found addr: %p",
+			__FUNCTION__, __LINE__, addr);
+		return -1;
+	}
+
+	if (iter->used < 0) {
+		acl_msg_warn("warning: %s(%d), used(%d) < 0",
+			__FUNCTION__, __LINE__, iter->used);
+		return -1;
+	}
+
+	if (iter->used > 0 || iter->keep)
+		return 0;
+
+	/* should free the ACL_DBUF block */
+
+	if (iter == pool->head)
+		pool->head = iter->next;
+	else
+		prev->next = iter->next;
+
+	pool->off -= iter->addr - iter->buf;
+
+	if (iter->size > pool->block_size)
+		pool->huge--;
+
+	acl_myfree(iter);
+
+	return 1;
 }
 
 static ACL_DBUF *acl_dbuf_alloc(ACL_DBUF_POOL *pool, size_t length)
@@ -123,15 +213,18 @@ static ACL_DBUF *acl_dbuf_alloc(ACL_DBUF_POOL *pool, size_t length)
 #else
 	ACL_DBUF *dbuf = (ACL_DBUF*) acl_mymalloc(sizeof(ACL_DBUF) + length);
 #endif
-	dbuf->next = NULL;
-	dbuf->ptr = (void*) dbuf->buf_addr;
+	dbuf->addr = (char*) dbuf->buf;
 
-	if (pool->head == NULL)
-		pool->head = dbuf;
-	else {
-		dbuf->next = pool->head;
-		pool->head = dbuf;
-	}
+	dbuf->next = pool->head;
+	dbuf->used = 0;
+	dbuf->keep = 0;
+	dbuf->size = length;
+	dbuf->addr = dbuf->buf;
+
+	pool->head = dbuf;
+	if (length > pool->block_size)
+		pool->huge++;
+
 	return dbuf;
 }
 
@@ -146,16 +239,19 @@ void *acl_dbuf_pool_alloc(ACL_DBUF_POOL *pool, size_t length)
 		dbuf = acl_dbuf_alloc(pool, length);
 	else if (pool->head == NULL)
 		dbuf = acl_dbuf_alloc(pool, pool->block_size);
-	else if (pool->block_size < ((char*) pool->head->ptr
-		- (char*) pool->head->buf_addr) + length)
+	else if (pool->block_size < ((char*) pool->head->addr
+		- (char*) pool->head->buf) + length)
 	{
 		dbuf = acl_dbuf_alloc(pool, pool->block_size);
 	}
 	else
 		dbuf = pool->head;
 
-	ptr = dbuf->ptr;
-	dbuf->ptr = (char*) dbuf->ptr + length;
+	ptr = dbuf->addr;
+	dbuf->addr = (char*) dbuf->addr + length;
+	pool->off += length;
+	dbuf->used++;
+
 	return ptr;
 }
 
@@ -179,12 +275,74 @@ char *acl_dbuf_pool_strdup(ACL_DBUF_POOL *pool, const char *s)
 	return ptr;
 }
 
-void *acl_dbuf_pool_memdup(ACL_DBUF_POOL *pool, const void *s, size_t len)
+char *acl_dbuf_pool_strndup(ACL_DBUF_POOL *pool, const char *s, size_t len)
+{
+	char *ptr;
+	size_t n = strlen(s);
+
+	if (n > len)
+		n = len;
+	ptr = (char*) acl_dbuf_pool_alloc(pool, n + 1);
+	memcpy(ptr, s, n);
+	ptr[n] = 0;
+	return ptr;
+}
+
+void *acl_dbuf_pool_memdup(ACL_DBUF_POOL *pool, const void *addr, size_t len)
 {
 	void *ptr = acl_dbuf_pool_alloc(pool, len);
 
-	memcpy(ptr, s, len);
+	memcpy(ptr, addr, len);
 	return ptr;
+}
+
+int acl_dbuf_pool_keep(ACL_DBUF_POOL *pool, const void *addr)
+{
+	const char *ptr = (const char*) addr;
+	ACL_DBUF *iter = pool->head;
+
+	while (iter) {
+		if (ptr < iter->addr && ptr >= iter->buf) {
+			iter->keep++;
+			if (iter->keep <= iter->used)
+				return 0;
+
+			acl_msg_warn("warning: %s(%d), keep(%d) > used(%d)",
+				__FUNCTION__, __LINE__,
+				iter->keep, iter->used);
+			return -1;
+		}
+
+		iter = iter->next;
+	}
+
+	acl_msg_warn("warning: %s(%d), not found addr: %p",
+		__FUNCTION__, __LINE__, addr);
+	return -1;
+}
+
+int acl_dbuf_pool_unkeep(ACL_DBUF_POOL *pool, const void *addr)
+{
+	const char *ptr = (const char*) addr;
+	ACL_DBUF *iter = pool->head;
+
+	while (iter) {
+		if (ptr < iter->addr && ptr >= iter->buf) {
+			iter->keep--;
+			if (iter->keep >= 0)
+				return 0;
+
+			acl_msg_warn("warning: %s(%d), keep(%d) < 0",
+				__FUNCTION__, __LINE__, iter->keep);
+			return -1;
+		}
+
+		iter = iter->next;
+	}
+
+	acl_msg_warn("warning: %s(%d), not found addr: %p",
+		__FUNCTION__, __LINE__, addr);
+	return -1;
 }
 
 void acl_dbuf_pool_test(size_t max)
@@ -239,3 +397,4 @@ void acl_dbuf_pool_test(size_t max)
 		acl_dbuf_pool_destroy(pool);
 	}
 }
+

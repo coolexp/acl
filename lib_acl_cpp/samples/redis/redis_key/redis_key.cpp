@@ -18,7 +18,7 @@ static bool test_del(acl::redis_key& redis, int n)
 			return false;
 		}
 		else if (i < 10)
-			printf("del ok, key: %s\r\n", key.c_str());
+			printf("del ok, key: %s, ret: %d\r\n", key.c_str(), ret);
 	}
 
 	return true;
@@ -157,8 +157,8 @@ int main(int argc, char* argv[])
 
 	acl::acl_cpp_init();
 
-	acl::redis_client_cluster cluster(conn_timeout, rw_timeout);
-	cluster.set(addr.c_str(), 100);
+	acl::redis_client_cluster cluster;
+	cluster.set(addr.c_str(), 100, conn_timeout, rw_timeout);
 
 	acl::redis_client client(addr.c_str(), conn_timeout, rw_timeout);
 

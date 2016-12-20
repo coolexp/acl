@@ -21,15 +21,23 @@ public:
 	/**
 	 * 构造函数
 	 * @param addr {const char*} 服务器监听地址，格式：ip:port(domain:port)
-	 * @param count {size_t} 连接池最大连接个数限制
+	 * @param max {size_t} 连接池最大连接个数限制，如果该值设为 0，则不设置
+	 *  连接池的连接上限
 	 * @param idx {size_t} 该连接池对象在集合中的下标位置(从 0 开始)
 	 */
-	connect_pool(const char* addr, size_t count, size_t idx = 0);
+	connect_pool(const char* addr, size_t max, size_t idx = 0);
 
 	/**
 	 * 该类当允许自行销毁时，类实例应为动态对象
 	 */
 	virtual ~connect_pool();
+
+	/**
+	 * 此接口用来设置超时时间
+	 * @param conn_timeout {int} 网络连接超时时间(秒)
+	 * @param rw_timeout {int} 网络 IO 超时时间(秒)
+	 */
+	connect_pool& set_timeout(int conn_timeout, int rw_timeout);
 
 	/**
 	 * 设置连接池异常的重试时间间隔
@@ -102,7 +110,7 @@ public:
 	}
 
 	/**
-	 * 获取连接池最大连接数限制
+	 * 获取连接池最大连接数限制，如果返回值为 0 则表示没有最大连接数限制
 	 * @return {size_t}
 	 */
 	size_t get_max() const
@@ -182,8 +190,10 @@ protected:
 	int   retry_inter_;
 	time_t last_dead_;			// 该连接池对象上次不可用时的时间截
 
-	size_t idx_;				// 该连接池对象在集合中的下标位置
 	char  addr_[256];			// 连接池对应的服务器地址，IP:PORT
+	int   conn_timeout_;			// 网络连接超时时间(秒)
+	int   rw_timeout_;			// 网络 IO 超时时间(秒)
+	size_t idx_;				// 该连接池对象在集合中的下标位置
 	size_t max_;				// 最大连接数
 	size_t count_;				// 当前的连接数
 	time_t idle_ttl_;			// 空闲连接的生命周期
@@ -195,6 +205,37 @@ protected:
 	unsigned long long current_used_;	// 某时间段内的访问量
 	time_t last_;				// 上次记录的时间截
 	std::list<connect_client*> pool_;	// 连接池集合
+};
+
+class ACL_CPP_API connect_guard
+{
+public:
+	connect_guard(connect_pool& pool)
+		: keep_(true), pool_(pool), conn_(NULL)
+	{
+	}
+
+	virtual ~connect_guard(void)
+	{
+		if (conn_)
+			pool_.put(conn_, keep_);
+	}
+
+	void set_keep(bool keep)
+	{
+		keep_ = keep;
+	}
+
+	connect_client* peek(void)
+	{
+		conn_ = pool_.peek();
+		return conn_;
+	}
+
+protected:
+	bool keep_;
+	connect_pool& pool_;
+	connect_client* conn_;
 };
 
 } // namespace acl

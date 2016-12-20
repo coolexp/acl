@@ -1,31 +1,65 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
+#include "acl_cpp/stdlib/dbuf_pool.hpp"
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/stdlib/util.hpp"
 #include "acl_cpp/stdlib/string.hpp"
 #include "acl_cpp/stdlib/url_coder.hpp"
+#include "acl_cpp/stdlib/sha1.hpp"
 #include "acl_cpp/http/HttpCookie.hpp"
 #include "acl_cpp/http/http_header.hpp"
+#endif
 
 namespace acl
 {
 
 #define CP(x, y) ACL_SAFE_STRNCPY(x, y, sizeof(x))
 
-http_header::http_header(void)
+http_header::http_header(dbuf_guard* dbuf /* = NULL */)
 {
+	if (dbuf != NULL)
+	{
+		dbuf_ = dbuf;
+		dbuf_internal_ = NULL;
+	}
+	else
+	{
+		dbuf_internal_ = new dbuf_guard;
+		dbuf_ = dbuf_internal_;
+	}
 	init();
 }
 
-http_header::http_header(const char* url)
+http_header::http_header(const char* url, dbuf_guard* dbuf /* = NULL */)
 {
+	if (dbuf != NULL)
+	{
+		dbuf_ = dbuf;
+		dbuf_internal_ = NULL;
+	}
+	else
+	{
+		dbuf_internal_ = new dbuf_guard;
+		dbuf_ = dbuf_internal_;
+	}
 	init();
 	if (url && *url)
 		set_url(url);
 }
 
-http_header::http_header(int status)
+http_header::http_header(int status, dbuf_guard* dbuf /* = NULL */)
 {
+	if (dbuf != NULL)
+	{
+		dbuf_ = dbuf;
+		dbuf_internal_ = NULL;
+	}
+	else
+	{
+		dbuf_internal_ = new dbuf_guard;
+		dbuf_ = dbuf_internal_;
+	}
 	init();
 	set_status(status);
 }
@@ -33,6 +67,7 @@ http_header::http_header(int status)
 http_header::~http_header(void)
 {
 	clear();
+	delete dbuf_internal_;
 }
 
 void http_header::init()
@@ -53,39 +88,19 @@ void http_header::init()
 	content_length_ = -1;
 	chunked_transfer_ = false;
 	transfer_gzip_ = false;
+
+	upgrade_ = NULL;
+	ws_origin_ = NULL;
+	ws_sec_key_ = NULL;
+	ws_sec_proto_ = NULL;
+	ws_sec_ver_ = -1;
+	ws_sec_accept_ = NULL;
 }
 
 void http_header::clear()
 {
-	if (url_)
-	{
-		acl_myfree(url_);
-		url_ = NULL;
-	}
-
-	std::list<HttpCookie*>::iterator cookies_it = cookies_.begin();
-	for (; cookies_it != cookies_.end(); ++cookies_it)
-		(*cookies_it)->destroy();
 	cookies_.clear();
-
-	std::list<HTTP_HDR_ENTRY*>::iterator entries_it = entries_.begin();
-	for (; entries_it != entries_.end(); ++entries_it)
-	{
-		acl_myfree((*entries_it)->name);
-		acl_myfree((*entries_it)->value);
-		acl_myfree(*entries_it);
-	}
 	entries_.clear();
-
-	std::list<HTTP_PARAM*>::iterator params_it = params_.begin();
-	for (; params_it != params_.end(); ++params_it)
-	{
-		acl_myfree((*params_it)->name);
-		// 在调用 add_param 时允许 value 为空指针
-		if ((*params_it)->value)
-			acl_myfree((*params_it)->value);
-		acl_myfree(*params_it);
-	}
 	params_.clear();
 }
 
@@ -93,6 +108,9 @@ void http_header::reset()
 {
 	clear();
 	init();
+
+	if (dbuf_internal_)
+		dbuf_internal_->dbuf_reset();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -114,16 +132,15 @@ http_header& http_header::add_entry(const char* name, const char* value)
 	{
 		if (strcasecmp((*it)->name, name) == 0)
 		{
-			acl_myfree((*it)->value);
-			(*it)->value = acl_mystrdup(value);
+			(*it)->value = dbuf_->dbuf_strdup(value);
 			return *this;
 		}
 	}
 
 	HTTP_HDR_ENTRY* entry = (HTTP_HDR_ENTRY*)
-		acl_mycalloc(1, sizeof(HTTP_HDR_ENTRY));
-	entry->name = acl_mystrdup(name);
-	entry->value = acl_mystrdup(value);
+		dbuf_->dbuf_calloc(sizeof(HTTP_HDR_ENTRY));
+	entry->name = dbuf_->dbuf_strdup(name);
+	entry->value = dbuf_->dbuf_strdup(value);
 	entries_.push_back(entry);
 	return *this;
 }
@@ -159,7 +176,9 @@ http_header& http_header::add_cookie(const char* name, const char* value,
 	if (name == NULL || *name == 0 || value == NULL)
 		return *this;
 
-	HttpCookie* cookie = NEW HttpCookie(name, value);
+	HttpCookie* cookie = dbuf_->create<HttpCookie, const char*,
+		const char*, dbuf_guard*>(name, value, dbuf_);
+
 	if (domain && *domain)
 		cookie->setDomain(domain);
 	if (path && *path)
@@ -170,10 +189,14 @@ http_header& http_header::add_cookie(const char* name, const char* value,
 	return *this;
 }
 
-http_header& http_header::add_cookie(HttpCookie* cookie)
+http_header& http_header::add_cookie(const HttpCookie* in)
 {
-	if (cookie)
-		cookies_.push_back(cookie);
+	if (in == NULL)
+		return *this;
+
+	HttpCookie* cookie = dbuf_->create<HttpCookie, const HttpCookie*,
+		dbuf_guard*> (in, dbuf_);
+	cookies_.push_back(cookie);
 	return *this;
 }
 
@@ -193,8 +216,7 @@ void http_header::build_common(string& buf) const
 {
 	if (!entries_.empty())
 	{
-		std::list<HTTP_HDR_ENTRY*>::const_iterator it =
-			entries_.begin();
+		std::list<HTTP_HDR_ENTRY*>::const_iterator it = entries_.begin();
 		for (; it != entries_.end(); ++it)
 			buf << (*it)->name << ": " << (*it)->value << "\r\n";
 	}
@@ -219,7 +241,10 @@ void http_header::build_common(string& buf) const
 
 	if (is_request_ == false && cgi_mode_)
 		return;
-	if (keep_alive_)
+
+	if (upgrade_ && *upgrade_)
+		buf << "Upgrade: " << upgrade_ << "\r\nConnection: Upgrade\r\n";
+	else if (keep_alive_)
 		buf << "Connection: " << "Keep-Alive\r\n";
 	else
 		buf << "Connection: " << "Close\r\n";
@@ -228,18 +253,15 @@ void http_header::build_common(string& buf) const
 //////////////////////////////////////////////////////////////////////////
 // 与 HTTP 请求头相关的函数
 
-http_header& http_header::set_url(const char* url)
+http_header& http_header::set_url(const char* url, bool encoding /* = true */)
 {
 	acl_assert(url && *url);
+
 	is_request_ = true;
-
-	if (url_)
-		acl_myfree(url_);
-
 	size_t len = strlen(url);
 
 	// 多分配两个字节：'\0' 及可能添加的 '/'
-	url_ = (char*) acl_mymalloc(len + 2);
+	url_ = (char*) dbuf_->dbuf_alloc(len + 2);
 	memcpy(url_, url, len);
 	url_[len] = 0;
 
@@ -248,6 +270,10 @@ http_header& http_header::set_url(const char* url)
 		ptr = url_ + sizeof("http://") - 1;
 	else if (strncasecmp(url_, "https://", sizeof("https://") - 1) == 0)
 		ptr = url_+ sizeof("https://") -1;
+	else if (strncasecmp(url_, "ws://", sizeof("ws://") - 1) == 0)
+		ptr = url_ + sizeof("ws://") - 1;
+	else if (strncasecmp(url_, "wss://", sizeof("wss://") - 1) == 0)
+		ptr = url_ + sizeof("wss://") - 1;
 	else
 		ptr = url_;
 
@@ -257,7 +283,12 @@ http_header& http_header::set_url(const char* url)
 
 	// 当 url 中只有相对路径时
 	if (ptr == url_)
-		params = strchr(ptr, '?');
+	{
+		if (encoding)
+			params = strchr(ptr, '?');
+		else
+			params = NULL;
+	}
 
 	// 当 url 为绝对路径时
 	else if ((slash = strchr(ptr, '/')) != NULL && slash > ptr)
@@ -268,7 +299,11 @@ http_header& http_header::set_url(const char* url)
 
 		// 添加主机地址
 		ACL_SAFE_STRNCPY(host_, ptr, n);
-		params = strchr(slash, '?');
+
+		if (encoding)
+			params = strchr(slash, '?');
+		else
+			params = NULL;
 	}
 
 	// 当 url 为绝对路径且主机地址后没有 '/'
@@ -280,7 +315,11 @@ http_header& http_header::set_url(const char* url)
 			url_[len] = '/';
 			url_[len + 1] = 0;
 		}
-		params = strchr(ptr, '?');
+
+		if (encoding)
+			params = strchr(ptr, '?');
+		else
+			params = NULL;
 	}
 
 	if (params == NULL)
@@ -337,6 +376,9 @@ http_header& http_header::set_method(http_method_t method)
 	case  HTTP_METHOD_OPTION:
 		CP(method_s_, "OPTIONS");
 		break;
+	case HTTP_METHOD_PROPFIND:
+		CP(method_s_, "PROPFIND");
+		break;
 	default:
 		CP(method_s_, "UNKNOWN");
 		break;
@@ -362,12 +404,23 @@ http_header& http_header::set_method(const char* method)
 		method_ = HTTP_METHOD_HEAD;
 	else if (strcasecmp(method, "OPTIONS") == 0)
 		method_ = HTTP_METHOD_OPTION;
+	else if (strcasecmp(method, "PROPFIND") == 0)
+		method_ = HTTP_METHOD_PROPFIND;
+	else if (*method != 0)
+		method_ = HTTP_METHOD_OTHER;
 	else
 		method_ = HTTP_METHOD_UNKNOWN;
 
 	CP(method_s_, method);
 
 	return *this;
+}
+
+http_method_t http_header::get_method(string* buf /* = NULL */) const
+{
+	if (buf)
+		*buf = method_s_;
+	return method_;
 }
 
 http_header& http_header::set_range_total(http_off_t total)
@@ -410,20 +463,18 @@ http_header& http_header::add_param(const char* name, const char* value)
 	{
 		if (strcasecmp((*it)->name, name) == 0)
 		{
-			if ((*it)->value)
-				acl_myfree((*it)->value);
 			if (value)
-				(*it)->value = acl_mystrdup(value);
+				(*it)->value = dbuf_->dbuf_strdup(value);
 			else
 				(*it)->value = NULL;
 			return *this;
 		}
 	}
 
-	HTTP_PARAM* param = (HTTP_PARAM*) acl_mycalloc(1, sizeof(HTTP_PARAM));
-	param->name = acl_mystrdup(name);
+	HTTP_PARAM* param = (HTTP_PARAM*) dbuf_->dbuf_calloc(sizeof(HTTP_PARAM));
+	param->name = dbuf_->dbuf_strdup(name);
 	if (value)
-		param->value = acl_mystrdup(value);
+		param->value = dbuf_->dbuf_strdup(value);
 	else
 		param->value = NULL;
 	params_.push_back(param);
@@ -504,6 +555,52 @@ http_header& http_header::add_format(const char* name, const char* fmt, ...)
 	return add_param(name, buf.c_str());
 }
 
+http_header& http_header::set_upgrade(const char* value /* = "websocket" */)
+{
+	if (value && *value)
+	{
+		upgrade_ = dbuf_->dbuf_strdup(value);
+		status_ = 101;  // automatic set status_ to 101
+	}
+	else
+		upgrade_ = NULL;
+	return *this;
+}
+
+http_header& http_header::set_ws_origin(const char* url)
+{
+	if (url && *url)
+		ws_origin_ = dbuf_->dbuf_strdup(url);
+	return *this;
+}
+
+http_header& http_header::set_ws_key(const char* key)
+{
+	if (key && *key)
+		ws_sec_key_ = dbuf_->dbuf_strdup(key);
+	return *this;
+}
+
+http_header& http_header::set_ws_protocol(const char* proto)
+{
+	if (proto && *proto)
+		ws_sec_proto_ = dbuf_->dbuf_strdup(proto);
+	return *this;
+}
+
+http_header& http_header::set_ws_version(int ver)
+{
+	ws_sec_ver_ = ver;
+	return *this;
+}
+
+http_header& http_header::set_ws_accept(const char* key)
+{
+	if (key && *key)
+		ws_sec_key_ = dbuf_->dbuf_strdup(key);
+	return *this;
+}
+
 bool http_header::build_request(string& buf) const
 {
 	if (url_ == NULL || *url_ == 0)
@@ -546,7 +643,9 @@ bool http_header::build_request(string& buf) const
 			buf += tmp.c_str();
 		}
 	}
+
 	buf += " HTTP/1.1\r\n";
+
 	if (accept_compress_)
 		// 因为目前的 zlib_stream 仅支持于此
 		buf += "Accept-Encoding: gzip\r\n";
@@ -567,6 +666,17 @@ bool http_header::build_request(string& buf) const
 		buf += "\r\n";
 	}
 
+	build_common(buf);
+
+	if (ws_origin_ && *ws_origin_)
+		buf << "Origin: " << ws_origin_ << "\r\n";
+	if (ws_sec_key_ && *ws_sec_key_)
+		buf << "Sec-WebSocket-Key: " << ws_sec_key_ << "\r\n";
+	if (ws_sec_proto_ && *ws_sec_proto_)
+		buf << "Sec-Websocket-Protocol: " << ws_sec_proto_ << "\r\n";
+	if (ws_sec_ver_ > 0)
+		buf << "Sec-WebSocket-Version: " << ws_sec_ver_ << "\r\n";
+
 	// 添加分段请求字段
 	if (range_from_ >= 0)
 	{
@@ -576,7 +686,6 @@ bool http_header::build_request(string& buf) const
 		buf += "\r\n";
 	}
 
-	build_common(buf);
 	buf += "\r\n";
 
 	return (true);
@@ -587,7 +696,7 @@ bool http_header::redirect(const char* url)
 	if (url == NULL || *url == 0)
 	{
 		logger_error("url null");
-		return (false);
+		return false;
 	}
 
 	size_t n = 0;
@@ -598,38 +707,33 @@ bool http_header::redirect(const char* url)
 	else if (strncasecmp(url, "https://", sizeof("https://") - 1) == 0)
 		n = sizeof("https://") - 1;
 	if (url_)
-	{
-		acl_myfree(url_);
 		url_ = NULL;
-	}
 
 	if (n > 0)
 	{
 		url += n;
-		char* ptr = acl_mystrdup(url);
+		char* ptr = dbuf_->dbuf_strdup(url);
 		char* p = strchr(ptr, '/');
 		if (p)
 			*p = 0;
 		if (*ptr == 0)
 		{
 			logger_error("invalid url(%s)", url);
-			acl_myfree(ptr);
-			return (false);
+			return false;
 		}
 		set_host(ptr);
 		if (*(p + 1))
 		{
 			*p = '/';
-			url_ = acl_mystrdup(p);
+			url_ = p;
 		}
 		else
-			url_ = acl_mystrdup("/");
-		acl_myfree(ptr);
+			url_ = dbuf_->dbuf_strdup("/");
 	}
 	else
-		url_ = acl_mystrdup(url);
+		url_ = dbuf_->dbuf_strdup(url);
 
-	return (true);
+	return true;
 }
 
 http_header& http_header::set_redirect(unsigned int n /* = 5 */)
@@ -763,6 +867,35 @@ static const char *http_status(int status)
 	return (__maps[i].hs[pos].title);
 }
 
+void http_header::append_accept_key(const char* sec_key, string& out) const
+{
+	string tmp(sec_key);
+	tmp += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+	sha1 sha;
+	sha.input(tmp.c_str(), tmp.size());
+	unsigned char digest[20];
+	sha.result((unsigned *) digest);
+
+	//little endian to big endian
+	for (int i = 0; i < 20; i += 4)
+	{
+		unsigned char c;
+
+		c = digest[i];
+		digest[i] = digest[i + 3];
+		digest[i + 3] = c;
+
+		c = digest[i + 1];
+		digest[i + 1] = digest[i + 2];
+		digest[i + 2] = c;
+	}
+
+	unsigned char* s = acl_base64_encode((char*) digest, 20);
+	out << "Sec-WebSocket-Accept: " << (char*) s << "\r\n";
+	acl_myfree(s);
+}
+
 bool http_header::build_response(string& out) const
 {
 	out.clear();
@@ -780,6 +913,7 @@ bool http_header::build_response(string& out) const
 			char buf[64];
 			date_format(buf, sizeof(buf), now);
 			out << "Date: " << buf << "\r\n";
+			out << "Server: acl\r\n";
 		}
 	}
 
@@ -801,13 +935,23 @@ bool http_header::build_response(string& out) const
 		}
 	}
 
+	if (upgrade_ && *upgrade_)
+	{
+		build_common(out);
+		if (ws_sec_key_ && *ws_sec_key_)
+			append_accept_key(ws_sec_key_, out);
+
+		out << "\r\n";
+		return true;
+	}
+
 	// 添加分段响应字段
 	if (range_from_ >= 0 && range_to_ >= range_from_ && range_total_ > 0)
 		out << "Content-Range: bytes=" << range_from_ << '-'
 			<< range_to_ << '/' << range_total_ << "\r\n";
 
-	// 如果是 gzip 压缩数据，当非 chunked 传输时，必须取消 Content-Length 字段，
-	// 同时禁止保持长连接，即： Connection: close
+	// 如果是 gzip 压缩数据，当非 chunked 传输时，必须取消 Content-Length
+	// 字段，同时禁止保持长连接，即： Connection: close
 	if (transfer_gzip_)
 	{
 		out << "Content-Encoding: gzip\r\n";

@@ -1,11 +1,14 @@
 #include "acl_stdafx.hpp"
-#include <assert.h>
 #include "mysql.h"
 #include "errmsg.h"
+#ifndef ACL_PREPARE_COMPILE
+#include <assert.h>
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/stdlib/string.hpp"
+#include "acl_cpp/db/mysql_conf.hpp"
 #include "acl_cpp/db/db_mysql.hpp"
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -43,6 +46,10 @@ typedef void (STDCALL *mysql_free_result_fn)(MYSQL_RES*);
 typedef my_ulonglong (STDCALL *mysql_affected_rows_fn)(MYSQL*);
 typedef int (STDCALL *mysql_set_character_set_fn)(MYSQL*, const char*);
 typedef const char* (STDCALL *mysql_character_set_name_fn)(MYSQL*);
+typedef void (STDCALL *mysql_thread_init_fn)(void);
+typedef void (STDCALL *mysql_thread_end_fn)(void);
+typedef void (STDCALL *mysql_server_init_fn)(int, char **, char **);
+typedef void (STDCALL *mysql_server_end_fn)(void);
 
 static mysql_libversion_fn __mysql_libversion = NULL;
 static mysql_client_info_fn __mysql_client_info = NULL;
@@ -63,6 +70,10 @@ static mysql_free_result_fn __mysql_free_result = NULL;
 static mysql_affected_rows_fn __mysql_affected_rows = NULL;
 static mysql_set_character_set_fn __mysql_set_character_set = NULL;
 static mysql_character_set_name_fn __mysql_character_set_name = NULL;
+static mysql_thread_init_fn __mysql_thread_init = NULL;
+static mysql_thread_end_fn __mysql_thread_end = NULL;
+static mysql_server_init_fn __mysql_server_init = NULL;
+static mysql_server_end_fn __mysql_server_end = NULL;
 
 static acl_pthread_once_t __mysql_once = ACL_PTHREAD_ONCE_INIT;
 static ACL_DLL_HANDLE __mysql_dll = NULL;
@@ -75,6 +86,20 @@ static void __mysql_dll_unload(void)
 {
 	if (__mysql_dll != NULL)
 	{
+		// 即使主线程没有调用 mysql_thread_init 过程，这样做也是
+		// 无害的，因为 libmysqlclient 内部会自动判断取得的线程
+		// 局部变量是否有效
+#ifdef ACL_UNIX
+		if (__mysql_thread_end != NULL)
+			__mysql_thread_end();
+
+		if (__mysql_server_end != NULL)
+		{
+			__mysql_server_end();
+			__mysql_server_end = NULL;
+		}
+#endif
+
 		acl_dlclose(__mysql_dll);
 		__mysql_dll = NULL;
 		logger("%s unload ok", __mysql_path.c_str());
@@ -102,7 +127,7 @@ static void __mysql_dll_load(void)
 	__mysql_dll = acl_dlopen(path);
 
 	if (__mysql_dll == NULL)
-		logger_fatal("load %s error: %s", path, acl_last_serror());
+		logger_fatal("load %s error: %s", path, acl_dlerror());
 
 	// 记录动态库路径，以便于在动态库卸载时输出库路径名
 	__mysql_path = path;
@@ -111,114 +136,138 @@ static void __mysql_dll_load(void)
 		acl_dlsym(__mysql_dll, "mysql_get_client_version");
 	if (__mysql_libversion == NULL)
 		logger_fatal("load mysql_get_client_version from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_client_info = (mysql_client_info_fn)
 		acl_dlsym(__mysql_dll, "mysql_get_client_info");
 	if (__mysql_client_info == NULL)
 		logger_fatal("load mysql_get_client_info from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_init = (mysql_init_fn) acl_dlsym(__mysql_dll, "mysql_init");
 	if (__mysql_init == NULL)
 		logger_fatal("load mysql_init from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_open = (mysql_open_fn)
 		acl_dlsym(__mysql_dll, "mysql_real_connect");
 	if (__mysql_open == NULL)
 		logger_fatal("load mysql_real_connect from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_close = (mysql_close_fn)
 		acl_dlsym(__mysql_dll, "mysql_close");
 	if (__mysql_close == NULL)
 		logger_fatal("load mysql_close from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_options = (mysql_options_fn)
 		acl_dlsym(__mysql_dll, "mysql_options");
 	if (__mysql_options == NULL)
 		logger_fatal("load mysql_options from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_autocommit = (mysql_autocommit_fn)
 		acl_dlsym(__mysql_dll, "mysql_autocommit");
 	if (__mysql_autocommit == NULL)
 		logger_fatal("load mysql_autocommit from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_errno = (mysql_errno_fn)
 		acl_dlsym(__mysql_dll, "mysql_errno");
 	if (__mysql_errno == NULL)
 		logger_fatal("load mysql_errno from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_error = (mysql_error_fn)
 		acl_dlsym(__mysql_dll, "mysql_error");
 	if (__mysql_error == NULL)
 		logger_fatal("load mysql_error from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_query = (mysql_query_fn)
 		acl_dlsym(__mysql_dll, "mysql_query");
 	if (__mysql_query == NULL)
 		logger_fatal("load mysql_query from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_num_fields = (mysql_num_fields_fn)
 		acl_dlsym(__mysql_dll, "mysql_num_fields");
 	if (__mysql_num_fields == NULL)
 		logger_fatal("load mysql_num_fields from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_fetch_fields = (mysql_fetch_fields_fn)
 		acl_dlsym(__mysql_dll, "mysql_fetch_fields");
 	if (__mysql_fetch_fields == NULL)
 		logger_fatal("load mysql_fetch_fields from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_fetch_row = (mysql_fetch_row_fn)
 		acl_dlsym(__mysql_dll, "mysql_fetch_row");
 	if (__mysql_fetch_row == NULL)
 		logger_fatal("load mysql_fetch_row from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_store_result = (mysql_store_result_fn)
 		acl_dlsym(__mysql_dll, "mysql_store_result");
 	if (__mysql_store_result == NULL)
 		logger_fatal("load mysql_store_result from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_num_rows = (mysql_num_rows_fn)
 		acl_dlsym(__mysql_dll, "mysql_num_rows");
 	if (__mysql_num_rows == NULL)
 		logger_fatal("load mysql_num_rows from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_free_result = (mysql_free_result_fn)
 		acl_dlsym(__mysql_dll, "mysql_free_result");
 	if (__mysql_free_result == NULL)
 		logger_fatal("load mysql_free_result from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_affected_rows = (mysql_affected_rows_fn)
 		acl_dlsym(__mysql_dll, "mysql_affected_rows");
 	if (__mysql_affected_rows == NULL)
 		logger_fatal("load mysql_affected_rows from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_set_character_set = (mysql_set_character_set_fn)
 		acl_dlsym(__mysql_dll, "mysql_set_character_set");
 	if (__mysql_affected_rows == NULL)
 		logger_fatal("load mysql_set_character_set_fn %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
 
 	__mysql_character_set_name = (mysql_character_set_name_fn)
 		acl_dlsym(__mysql_dll, "mysql_character_set_name");
 	if (__mysql_affected_rows == NULL)
 		logger_fatal("load mysql_character_set_name from %s error: %s",
-			path, acl_last_serror());
+			path, acl_dlerror());
+
+	__mysql_thread_init = (mysql_thread_init_fn)
+		acl_dlsym(__mysql_dll, "mysql_thread_init");
+	if (__mysql_thread_init == NULL)
+		logger_warn("load mysql_thread_init from %s error: %s",
+			path, acl_dlerror());
+
+	__mysql_thread_end = (mysql_thread_end_fn)
+		acl_dlsym(__mysql_dll, "mysql_thread_end");
+	if (__mysql_thread_end == NULL)
+		logger_warn("load mysql_thread_end from %s error: %s",
+			path, acl_dlerror());
+
+	__mysql_server_init = (mysql_server_init_fn)
+		acl_dlsym(__mysql_dll, "mysql_server_init");
+	if (__mysql_server_init == NULL)
+		logger_warn("load mysql_server_init from %s error: %s",
+			path, acl_dlerror());
+
+	__mysql_server_end = (mysql_server_end_fn)
+		acl_dlsym(__mysql_dll, "mysql_server_end");
+	if (__mysql_server_end == NULL)
+		logger_warn("load mysql_server_end from %s error: %s",
+			path, acl_dlerror());
 
 	logger("%s loaded!", path);
 	atexit(__mysql_dll_unload);
@@ -244,6 +293,10 @@ static void __mysql_dll_load(void)
 #  define  __mysql_affected_rows mysql_affected_rows
 #  define  __mysql_set_character_set mysql_set_character_set
 #  define  __mysql_character_set_name mysql_character_set_name
+#  define  __mysql_thread_init mysql_thread_init
+#  define  __mysql_thread_end mysql_thread_end
+#  define  __mysql_thread_init mysql_thread_init
+#  define  __mysql_server_end mysql_server_end
 
 # endif
 
@@ -293,10 +346,11 @@ private:
 
 //////////////////////////////////////////////////////////////////////////
 
-db_mysql::db_mysql(const char* dbaddr, const char* dbname,
+void db_mysql::sane_mysql_init(const char* dbaddr, const char* dbname,
 	const char* dbuser, const char* dbpass,
-	unsigned long dbflags /* = 0 */, bool auto_commit /* = true */,
-	int conn_timeout /* = 60 */, int rw_timeout /* = 60 */)
+	unsigned long dbflags, bool auto_commit,
+	int conn_timeout, int rw_timeout,
+	const char* charset)
 {
 	if (dbaddr == NULL || *dbaddr == 0)
 		logger_fatal("dbaddr null");
@@ -323,6 +377,9 @@ db_mysql::db_mysql(const char* dbaddr, const char* dbname,
 	else
 		dbpass_ = NULL;
 
+	if (charset && *charset)
+		charset_ = charset;
+
 	dbflags_ = dbflags;
 	auto_commit_ = auto_commit;
 	conn_timeout_ = conn_timeout;
@@ -332,6 +389,24 @@ db_mysql::db_mysql(const char* dbaddr, const char* dbname,
 	acl_pthread_once(&__mysql_once, __mysql_dll_load);
 #endif
 	conn_ = NULL;
+}
+
+db_mysql::db_mysql(const char* dbaddr, const char* dbname,
+	const char* dbuser, const char* dbpass,
+	unsigned long dbflags /* = 0 */, bool auto_commit /* = true */,
+	int conn_timeout /* = 60 */, int rw_timeout /* = 60 */,
+	const char* charset /* = "utf8" */)
+{
+	sane_mysql_init(dbaddr, dbname, dbuser, dbpass, dbflags,
+		auto_commit, conn_timeout, rw_timeout, charset);
+}
+
+db_mysql::db_mysql(const mysql_conf& conf)
+{
+	sane_mysql_init(conf.get_dbaddr(), conf.get_dbname(),
+		conf.get_dbuser(), conf.get_dbpass(), conf.get_dbflags(),
+		conf.get_auto_commit(), conf.get_conn_timeout(),
+		conf.get_rw_timeout(), conf.get_charset());
 }
 
 db_mysql::~db_mysql()
@@ -378,7 +453,42 @@ const char* db_mysql::get_error() const
 		return "mysql not opened yet!";
 }
 
-bool db_mysql::dbopen(const char* local_charset)
+static acl_pthread_key_t __thread_key;
+
+static void thread_free_dummy(void* ctx)
+{
+	if ((unsigned long) acl_pthread_self() != acl_main_thread_self())
+		acl_myfree(ctx);
+
+#if defined(ACL_CPP_DLL) || defined(HAS_MYSQL_DLL)
+	if (__mysql_thread_end)
+		__mysql_thread_end();
+#endif
+}
+
+static int* __main_dummy = NULL;
+static void main_free_dummy(void)
+{
+	if (__main_dummy)
+	{
+		acl_myfree(__main_dummy);
+		__main_dummy = NULL;
+	}
+
+#if defined(ACL_CPP_DLL) || defined(HAS_MYSQL_DLL)
+	if (__mysql_thread_end)
+		__mysql_thread_end();
+#endif
+}
+
+static acl_pthread_once_t __thread_once_control = ACL_PTHREAD_ONCE_INIT;
+
+static void thread_once(void)
+{
+	acl_assert(!acl_pthread_key_create(&__thread_key, thread_free_dummy));
+}
+
+bool db_mysql::dbopen(const char* charset /* = NULL */)
 {
 	if (conn_)
 		return true;
@@ -411,6 +521,28 @@ bool db_mysql::dbopen(const char* local_charset)
 		db_unix = dbaddr_;
 		db_host = NULL;
 		db_port = 0;
+	}
+
+	int* dummy;
+
+	if (acl_pthread_once(&__thread_once_control, thread_once) != 0)
+		logger_error("call thread_once error: %s", acl_last_serror());
+	else if (!(dummy = (int*) acl_pthread_getspecific(__thread_key)))
+	{
+		dummy = (int*) acl_mymalloc(sizeof(int));
+		*dummy = 1;
+		acl_assert(!acl_pthread_setspecific(__thread_key, dummy));
+
+		// 调用下面函数可能会造成内存越界
+		//if (__mysql_thread_init != NULL)
+		//	__mysql_thread_init();
+
+		if ((unsigned long) acl_pthread_self()
+			== acl_main_thread_self())
+		{
+			__main_dummy = dummy;
+			atexit(main_free_dummy);
+		}
 	}
 
 	conn_ = __mysql_init(NULL);
@@ -457,23 +589,41 @@ bool db_mysql::dbopen(const char* local_charset)
 		db_unix, dbflags_) == NULL)
 	{
 		logger_error("connect mysql error(%s), db_host=%s, db_port=%d,"
-			" db_unix=%s, db_name=%s, db_user=%s, db_pass=%s",
-			__mysql_error(conn_), db_host ? db_host : "null", db_port,
-			db_unix ? db_unix : "null", dbname_, dbuser_, dbpass_);
+			" db_unix=%s, db_name=%s, db_user=%s, db_pass=%s,"
+			" dbflags=%ld",
+			__mysql_error(conn_),
+			db_host ? db_host : "null", db_port,
+			db_unix ? db_unix : "null",
+			dbname_ ? dbname_ : "null",
+			dbuser_ ? dbuser_ : "null",
+			dbpass_ ? dbpass_ : "null", dbflags_);
 
 		__mysql_close(conn_);
 		conn_ = NULL;
 		return false;
 	}
+#if 0
+	logger("connect mysql ok(%s), db_host=%s, db_port=%d, "
+		"db_unix=%s, db_name=%s, db_user=%s, db_pass=%s, dbflags=%ld",
+		__mysql_error(conn_),
+		db_host ? db_host : "null", db_port,
+		db_unix ? db_unix : "null",
+		dbname_ ? dbname_ : "null",
+		dbuser_ ? dbuser_ : "null",
+		dbpass_ ? dbpass_ : "null", dbflags_);
+#endif
 
-	if (local_charset)
+	if (charset != NULL && *charset != 0)
+		charset_ = charset;
+
+	if (!charset_.empty())
 	{
-		if (!__mysql_set_character_set(conn_, local_charset))
-			logger("set mysql charset to %s, %s", local_charset,
+		if (!__mysql_set_character_set(conn_, charset_.c_str()))
+			logger("set mysql charset to %s, %s", charset_.c_str(),
 				__mysql_character_set_name(conn_));
 		else
 			logger_error("set mysql to %s error %s",
-				local_charset, __mysql_error(conn_));
+				charset_.c_str(), __mysql_error(conn_));
 	}
 
 #if MYSQL_VERSION_ID >= 50000
@@ -526,7 +676,7 @@ bool db_mysql::sane_mysql_query(const char* sql)
 
 	/* 重新打开MYSQL连接进行重试 */
 	close();
-	if (dbopen("GBK") == false)
+	if (dbopen() == false)
 	{
 		logger_error("reopen db(%s) error", dbname_);
 		return false;
@@ -535,7 +685,6 @@ bool db_mysql::sane_mysql_query(const char* sql)
 		return true;
 	logger_error("db(%s), sql(%s) error(%s)",
 		dbname_, sql, __mysql_error(conn_));
-	close();
 	return false;
 }
 
@@ -575,6 +724,9 @@ bool db_mysql::tbl_exists(const char* tbl_name)
 
 bool db_mysql::sql_select(const char* sql)
 {
+	// 优先调用基类方法释放上次的查询结果
+	free_result();
+
 	if (sane_mysql_query(sql) == false)
 		return false;
 	MYSQL_RES *my_res = __mysql_store_result(conn_);
@@ -603,6 +755,8 @@ bool db_mysql::sql_select(const char* sql)
 
 bool db_mysql::sql_update(const char* sql)
 {
+	free_result();
+
 	if (sane_mysql_query(sql) == false)
 		return false;
 	int ret = (int) __mysql_affected_rows(conn_);
@@ -651,9 +805,20 @@ bool db_mysql::commit()
 namespace acl
 {
 
+void db_mysql::sane_mysql_init(const char*, const char*,
+	const char*, const char*,
+	unsigned long, bool, int, int, const char*)
+{
+}
+
 db_mysql::db_mysql(const char*, const char*,
 	const char*, const char*,
-	unsigned long, bool, int, int)
+	unsigned long, bool, int, int, const char*)
+{
+	logger_fatal("Please #define HAS_MYSQL or HAS_MYSQL_DLL first");
+}
+
+db_mysql::db_mysql(const mysql_conf&)
 {
 	logger_fatal("Please #define HAS_MYSQL or HAS_MYSQL_DLL first");
 }

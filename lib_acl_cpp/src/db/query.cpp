@@ -1,8 +1,10 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include <assert.h>
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/stdlib/snprintf.hpp"
 #include "acl_cpp/db/query.hpp"
+#endif
 
 namespace acl
 {
@@ -14,8 +16,7 @@ query::query()
 
 query::~query()
 {
-	if (sql_buf_)
-		delete sql_buf_;
+	delete sql_buf_;
 	reset();
 }
 
@@ -26,6 +27,12 @@ query& query::create_sql(const char* sql_fmt, ...)
 	sql_.vformat(sql_fmt, ap);
 	va_end(ap);
 
+	return *this;
+}
+
+query& query::create(const char* sql)
+{
+	sql_ = sql;
 	return *this;
 }
 

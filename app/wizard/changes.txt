@@ -1,3 +1,12 @@
+
+10) 2016.11.18
+10.1) master_proc.cpp/master_threads.cpp: 在 on_accept 中当 var_cfg_rw_timeout > 0
+时，将套接口设为非阻塞模式，以防止写超时
+
+9) 2015.12.21
+9.1) bugfix: master_threads.cpp 中的函数 proc_exit_timer 在只有当 nclients 为0
+时才允许退出
+
 8) 2015.6.22
 8.1) comment: 向导生成的服务器工程中的 main 源程序中增加了注释，指明使用方法
 

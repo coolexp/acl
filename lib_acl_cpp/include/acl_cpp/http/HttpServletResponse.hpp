@@ -3,13 +3,13 @@
 
 namespace acl {
 
+class dbuf_guard;
 class string;
 class ostream;
 class socket_stream;
 class http_header;
 class http_client;
 class HttpCookie;
-class HttpServlet;
 class HttpServletRequest;
 
 /**
@@ -228,12 +228,29 @@ public:
 	ostream& getOutputStream(void) const;
 
 	/**
+	 * 获得 HTTP 双向流对象，由构造函数的参数输入
+	 * @return {socket_stream&}
+	 */
+	socket_stream& getSocketStream(void) const;
+
+	/**
+	 * 获得底层的 http_client 通信对象
+	 * @return {http_client*} 非 NULL
+	 */
+	http_client* getClient() const
+	{
+		return client_;
+	}
+
+	/**
 	 * 设置 http 请求对象，该函数目前只应被 HttpServlet 类内部调用
 	 * @param request {HttpServletRequest*}
 	 */
 	void setHttpServletRequest(HttpServletRequest* request);
 
 private:
+	dbuf_guard* dbuf_internal_;
+	dbuf_guard* dbuf_;
 	socket_stream& stream_;		// 客户端连接流
 	HttpServletRequest* request_;	// http 请求对象
 	http_client* client_;		// http 响应流对象

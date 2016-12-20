@@ -1,5 +1,446 @@
 修改历史列表：
 
+-----------------------------------------------------------------------
+456) 2016.12.15
+456.1) feature: redis_command/redis_client 增加连接 IP 地址校验检测功能，主要
+用于调试情况
+456.2) bugfix: redis_pubsub 类中如果通过 psubcribe 订阅消息时，get_message 则
+会出错，需要 get_message 使其同时支持 subcribe 及 psubscribe
+
+455) 2016.12.14
+455.1) bugfix: redis_client.cpp 中的 run 方法在进行连接重试时，如果请求数据为空，则不
+应进行重试，而是应直接给上层应用返回失败，由应用层处理，比如对于 redis_pubsub 类中的方法 
+get_message 是没有请求命令的，针对此情况的连接重试，并不会重新获得订阅信息
+455.2) bugfix: redis_script 类中的参数顺序有误
+
+454) 2016.12.1
+454.1) freature: master_proc.cpp/master_threads.cpp/master_aio.cpp 的类中增加
+虚方法 (proc_)on_listen，以便将监听对象传递给应用
+
+453) 2016.11.24
+453.1) bugfix: istream.cpp 中的 gets 函数不应当读超时时设置 eof_ 标志位
+
+452) 2016.11.18
+452.1) bugfix: redis_list::bpop 及 redis_pubsub::get_message 的超时时间应
+不受 socket_stream 里的超时时间影响
+
+451) 2016.11.8
+451.1) bugfix: redis_command::run() 中当循环次数超过阀值后应该将连接归还给连接池
+
+450) 2016.11.7
+450.1) bugfix: redis_result::argv_to_string 返回值应该 >= 0
+
+-----------------------------------------------------------------------
+449) 2016.11.2
+449.1) bugfix: db_pool.cpp 中的方法 peek_open 禁止动态设置字符集，因为可能会引起
+线程冲突问题，如果想要设置字符集，必须在 db_mysql/db_sqlite 的构造中指定；对于 db_mysql
+类，当使用 mysql_conf 类进行初始化 db_mysql 构造时，在 mysql_conf 提前设定字符集
+
+448) 2016.11.2
+448.1) bugfix: db_mysql.cpp 中类 db_mysql 的构造函数没有针对 charset_ 初始化
+有可能会造成崩溃
+
+447) 2016.10.31
+447.1) bugfix: redis_string::incrbyfloat 及 redis_hash::hincrbyfloat 中在
+调用 get_string 后判断是否出错的方式有问题，应该使用长度做为判定条件而不是 bool 值
+
+446) 2016.10.26
+446.1) bugfix: redis_zset.cpp 中第二个 zrevrangebyscore_with_scores 返回结果
+集顺序是反的
+
+445) 2016.10.24
+445.1) bugfix: db_handle::peek_open 函数中的参数 charset 没有生效
+
+444) 2016.10.21
+444.1) bugfix: HttpServletRequest.cpp 中的方法 getLocalPort 无法取得本地端口
+444.2) feature: fstream 类新方法 rename 用于修改文件名
+
+443) 2016.10.20
+443.1) bugfix: websocket 类中的函数 read_frame_head 里，当数据长度字段为两个
+字节时，应该使用 short 类型且要使用 ntohs 而非 ntohl 做转换
+
+442) 2016.10.14
+442.1) feature: gson C++ 对象序列化库支持非 C++11 模式
+
+441) 2016.10.13
+441.1) bugfix: json_node 类中的 get_text 方法当字符串长度为 0 时应该返回空串 ""
+而不是返回 NULL 空指针
+441.2) feature: gson 序列化模块支持 struct 中的成员变量直接初始化 -niukey@qq.com
+
+440) 2016.10.10
+440.1) featur: json 类增加了 add_null/add_array_null 用于增加 null 类型节点
+
+439) 2016.10.8
+439.1) feature: 增加对象系列化模块 gson 类，用来将 struct 对象序列化为 json
+对象及由 json 对象反序列化为 struct 对象
+
+438) 2016.10.7
+438.1) bugfix: json.cpp 中判断 json 节点类型的方法有误
+
+437) 2016.9.17 -- 9.19
+437.1) feature: 增加了 websocket 类
+
+436) 2016.9.7
+436.1) bugfix: istream.cpp 中的函数 gets 在调用 acl_vstream_gets 或
+acl_vstream_gets_nonl 后判断标志位 ACL_VSTREAM_FLAG_TAGYES 的方法有误
+
+435) 2016.8.31
+435.1) feature: 添加了 SHA1 类 sha1
+
+-----------------------------------------------------------------------
+434) 2016.8.23
+434.1) bugfix: json_node::set_text 判断节点是否为叶节点的方法有误
+
+433) 2016.8.14
+433.1) feature: Makefile 添加条件编译选项：允许在编译时以 make polarssl=on
+方式将 POLARSSL 编译进去
+ 
+432) 2016.7.29
+432.1) feature: mime 类增加两个方法 get_plain_body/get_html_body 便于提取不同类型的
+432.2) feature: json 增加对 double 类型的支持
+正文内容
+
+431) 2016.7.7
+431.1) bugfix: mime::body_node 取正文有误
+
+430) 2016.6.7
+430.1) bugfix: string 类应该只检查空指针，而不应检查空串
+
+429) 2016.5.30
+429.1) safety: string 类针对指针类参数做了安全性检查
+
+428) 2016.5.10
+428.1) bugfix: http_request 类的get_body方法中，对象 ps 为局部变量，出作用域后
+依然被使用而导致崩溃
+
+427) 2016.5.5
+427.1) feature: xml/xml1/xml2 类中的方法 update 允许返回剩余的 xml 数据
+
+426) 2016.5.2
+426.1) bugfix: http 模块设置的读超时与 stream 的读超时冲突
+
+425) 2016.4.27
+425.1) feature: http_header 类中的方法 set_url 增加参数 encoding，该参数决定
+是否对出现于 url 中的参数进行 url 编码
+425.2) feature: dbuf_guard 类将容纳 dbuf_obj 的数组封装在链表中，以免该数组
+过大
+
+424) 2016.4.26
+424.1) feature: xml/xml1/xml2 在进行对象构造时允许初始化 dbuf 的参数
+
+423) 2016.4.19
+423.1) bugfix: thread 类中，在创建线程后对 thread_id_ 赋值时，可能会因为线程
+创建足够快且用户提前释放了线程对象而造成内存非法访问
+
+-----------------------------------------------------------------------
+422) 2016.4.16
+422.1) compile: 消除了 VC2012 使用 x64 方式编译时的一些编译警告
+
+421) 2016.4.14
+421.1) feature: string 类修改两个方法 split/split2，对 lib_acl C 库中新增的
+字符串分割函数(带引号引用的字符串)进行封装
+
+420) 2016.4.6
+420.1) feature&safety: redis_command::run 中当发现 used_ > 0 时会强制调用 clear
+来释放上次操作时临时创建的内存，以免用户反复使用该命令时忘记调用 clear
+
+419) 2016.4.2
+419.1) feature: redis_server 类增加接口 info 方便提取服务器配置信息
+
+418) 2016.4.1
+418.1) feature: redis_command 类支持直接组装 redis 协议方式
+
+417) 2016.3.30
+417.1) bugfix: session::set_ttl 针对 redis 缓存时有问题，去掉了针对 sid_saved_ 的判断
+
+416) 2016.3.24
+416.1) safety: master_threads 类中的 service_main 方法中，当应用返回 true 时，
+需要进一步检查该连接流是否已经出现异常，如果出现异常，则忽略应用的返回值，开始调用连接流
+的关闭过程，这样可以防止应用的误操作
+
+415) 2016.3.18
+415.1) bugfix: json 类中的 reset 方法在重置 json 对象时，因为 json 的 C 库
+内部会重建 root 节点，所以需要以 json 类中重新指定 root 节点
+
+414) 2016.3.17
+414.1) bugfix: redis_client_cluster 类中的 set_password 方法在设置集群中节点
+密码时，该方法的调用与添加集群节点的方法(set)与顺序相关，容易造成误操作导致密码设计无效
+
+413) 2016.3.16
+413.1) feature: queue_file::create 在产生唯一  ID 时，可以明显区分出进程号
+以便于调试检查当前队列文件所属的进程
+
+412) 2016.3.11
+412.1) bugfix: json_node::is_array 判断方式有问题
+
+411) 2016.3.9
+411.1) feature: HttpServletRequest::getParameter 在查找参数时允许不区分大小写
+
+410) 2016.3.5
+410.1) feature: db/query 类增加了创建 sql 的接口 create
+
+409) 2016.2.29
+409.1) 接口调整：将 master_threads 类与 master_threads2 类名互换
+
+408) 2016.2.26
+408.1) feature: master_threads2 类增加了几个接口
+
+407) 2016.2.18
+407.1) feature: xml/xml1/xml2 增加方法，允许将输入流中的内容作为 xml 节点的文本内容，
+这对于当文本内容非常大时比较有用
+
+406) 2016.2.17
+406.1) feature: session/redis_session/HttpSession 会话类增加功能接口
+
+405) 2016.2.13
+405.1) compile: 使得预编译，优化 g++ 编译速度
+
+404) 2016.2.6
+404.1) bugfix: zlib_stream 类判断剩余空间的方法应与 string 类匹配
+
+403) 2016.1.31
+403.1) feature: string 类支持内存映射文件方式管理内存，从而可以支持更多的内存空间
+403.2) samples: string/string5, 用于测试内存映射文件
+403.3) feature: xml/xml1/xml2 支持使用 dbuf_guard 会话内存池来创建临时对象，
+从而提升了内存使用效率
+
+402) 2016.1.27
+402.1) bugfix: charset_conv 类中的方法 update，当 m_addInvalid 为 false，应该
+过滤掉无效的字符
+402.2) performance: mime_state_parse.cpp 中的 mime_bound_body 函数优化了处理
+大邮件的性能
+
+401) 2016.1.22
+401.1) feature: HttpServlet 类增加了请求/响应成员函数(req_/res_)，以便于将
+读取 HTTP 请求数据体分离
+401.2) bugfix: connect_manager 类少两个设置函数 set_check_inter/set_idle_ttl
+
+400) 2016.1.15
+400.1) feature: redis 库增加了出错日志输出，便于运行时进行信息调试
+
+399) 2016.1.11
+399.1) feature: fstream 类中增加了方法 remove 用于删除文件
+
+398) 2016.1.6
+398.1) feature: 增加类 db_guard 用于自动释放从数据库连接池中获取的连接对象
+
+397) 2016.1.5
+397.1) feature: db_handle/db_mysql 类在进行查询前优先释放上次的查询结果，以免使用
+者忘记释放而造成内存泄露
+
+396) 2016.1.4
+396.1) feature: mime.cpp, mime_head.cpp 支持更多的 Content-Type 类型
+
+395) 2016.1.3
+395.1) bugfix: db_mysql.cpp 中调用  __mysql_open 时如果出错记日志时应判断
+每个参数是否为 NULL
+
+-----------------------------------------------------------------------
+394) 2015.12.29
+394.1) bugfix: redis_key 类中的 type 函数命令少一个 hash 类型
+
+393) 2015.12.28
+393.1) bugfix: 类 xml1, xml2 中的函数 getFirstElementByTag 内部没有判断 NULL
+393.2) bugfix: 取消了 http_request 类中的 acl_assert(client_) 断言判断
+
+392.1) 2015.12.25
+392.1) bugfix: dbuf_guard 类应禁止引用拷贝，否则在调用 create 的参数中如果有
+dbuf_guard 对象作为参数会有问题，如：
+class myobj : public acl::dbuf_obj
+{
+public:
+	myobj(acl::dbuf_guard& dbuf) : dbuf_(dbuf) {}
+	~myobj(void) {}
+};
+
+acl::dbuf_guard dbuf;
+myobj* obj = dbuf.create<myobj, acl::dbuf_guard>(dbuf);
+
+虽然 myobj 构造函数接受一个引用，但依然会在 create 时形成引用拷贝隐患，从而
+会造成 dbuf 内的缓冲区被二次释放，所以解决方式是禁止 dbuf_guard 类引用拷贝
+
+391.1) 2015.12.22
+391.1) compile: polarssl_io.cpp 中将 sys_read_ready 改名为 read_ready
+
+390) 2015.12.20
+390.1) feature: aio_handle 增加了几个设置方法，用来设置异步引擎的运行参数
+
+389) 2015.12.18
+389.1) bugfix: http_request 类的方法 request 在重置请求方法时存在问题
+389.2) feature: http_header 类的方法 get_method 增加了参数允许存放字符串表示的请求方法
+
+388) 2015.12.14
+388.1) bugfix: xml1/xml2 类中的方法 reset 应该将 root_ 节点删除，因为调用
+acl_xml_reset/acl_xml2_reset 后 xml 对象中 root 节点被释放，此时 root_ 节点
+所引用的根节点已经不存在
+
+387) 2015.12.9
+387.1) bugfix: db_mysql 类中，在初始 mysql 连接时，因为 libmysqlclient 库内部
+会通过 mysql_thread_init 初始化每个线程的线程局部变量，但却不会在线程退出前自
+动释放这些线程局部变量，这在多线程环境下会造成内存泄露，因为在 db_mysql 类内部
+增加了线程退出前调用 mysql_thread_end 来释放这些线程局部变量
+
+386) 2015.12.7
+386.1) feature: xml_node 类中增加接口 detach 用于将一个 xml 节点从 xml 对象
+树中分离
+
+385) 2015.12.3
+385.1) feature: xml2 类新增构造函数以文件句柄为构造参数
+385.2) bugfix: polarssl_io::read 中当 ssl_read 返回数据后，应该通过调用函数
+ssl_get_bytes_avail 判断 SSL 缓冲区中是否还有数据，如果有，则应该设置
+ACL_VSTREAM::sys_read_ready 标志位
+
+384) 2015.12.2
+384.1) 接口调整：redis 接口调整，尽量防止在使用变参时出错
+384.2) feature: 类 xml2 新增构造函数，可以更方便地使用内存文件映射方式解析
+和创建 xml 对象（目前仅支持 UNIX）
+
+383) 2015.11.30
+383.1) feature: 增加了 xml1.cpp/xml1.hpp 以便于支持第一个 xml 解析器
+383.2) feature: 增加了 xml2.cpp/xml2.hpp 以便于支持第二个 xml 解析器
+
+382) 2015.11.26
+382.1) bugfix: redis_zset::zstore 在判断 aggregate 时有误
+
+381) 2015.11.24
+381.1) feature: http_request/http_request_pool/http_request_manager 类支持
+SSL 通信方式
+
+380) 2015.11.23
+380.1) bugfix: zlib_stream 类在加载 zlib1.dll 库时不应该打开 deflateInit2，
+而应该打开 deflateInit2_ 地址，因为 deflateInit2 只是一个宏定义，而
+deflateInit2_ 才是动态库的函数地址
+
+379) 2015.11.20
+379.1) feature: url_coder 类继承于 dbuf_obj 从而纳入 dbuf_guard 管理
+379.2) bugfix: dbuf_guard 类中在调用 dbuf_reset 时应该首先将所有管理的对象
+进行析构
+379.3) bugfix: dbuf_guard 类在创建数组容器时需要调用 dbuf_keep 以保留内存池
+中的所在内存块
+
+378） 2015.11.18
+378.1） bugfix: istream::readtags 存在一处问题
+
+377) 2015.11.16
+377.1) feature: dbuf_guard 类增加了模板函数 create，可更加方便地创建任何继承
+于 dbuf_obj 的子类对象 --- Thank @淡墨水痕
+
+376) 2015.11.14
+376.1) feature: dbuf_guard 类增加了更多方便操作的方法，同时使数组对象也在
+内存池对象上创建
+376.2) safety: dbuf_guard 类中增加了对 dbuf_obj 对象的安全保护
+
+375) 2015.11.13
+375.1) feature: 连接池模块简化接口设计，允许连接集群管理器在添加新的连接池时
+设置超时时间，从而使连接池集群管理器针对不同的服务器地址采用不同的超时时间，
+这样可以使连接池模块适应于异构网络环境中
+
+374) 2015.11.12
+374.1) feature: http_request_manager 的构造函数增加了连接 http 服务器的超时时间
+及 IO 读写超时时间
+374.2) bugfix: 修复了 dbuf_obj 构造函数中的 BUG，应该首先将 nrefer_ 初始化为 0
+
+373) 2015.11.11
+373.1) bugfix: mail_message 类中的 append_addrs 方法存在一处指针溢出的 BUG
+
+372) 2015.11.10
+372.1) bugfix: redis_command 类中有两处 build 函数在构建请求命令时应该支持二进制格式
+372.2) feature: dbuf_obj 类增加了 nrefer_，便于 dbuf_guard 进行安全管理，以防止被
+dbug_guard 类对象重复释放
+
+371) 2015.11.7
+371.1) feature: dbuf_pool.cpp 中增加了内存池管理类 dbuf_guard 及内存池对象类
+dbuf_obj，以方便使用 dbuf_pool 内存池
+371.2) feature: dbuf_pool 类重载的 new 允许调用者指定所分配的内存块的倍数
+
+370) 2015.11.3
+370.1) feature: url_coder 类内部采用 dbuf_pool 内存对象进行分配管理
+370.2) feature: string 类增加了方法 equal 用来比较两个 string 对象里的内容
+
+369) 2015.11.1
+369.1) workaround: 整理 json_node 类
+
+368) 2015.10.28
+368.1) performance: http 模块的相关类（HttpCookie, http_header, HttpServlet,
+HttpServletRequest, HttpServerResponse）通过引入会话内存池(dbuf_pool)进行内存
+管理，从而大大提高了处理性能
+368.2) feature: dbuf_pool::dbuf_reset 增加参数 reserve，从而允许应用在重置内存池
+时可以保留部分已经分配的缓冲区
+
+367) 2015.10.27
+367.1) bugfix: HttpServletRequest 类中方法 readHeader 当调用方法
+getContentLength 时返回 -1，则会造成下面调用 acl_mymalloc((size_t) len + 1)
+时崩溃，现在针对 getContentLength 返回 -1时，直接返回
+
+366) 2015.10.25
+366.1) bugfix: db_mysql 类内部在出错重连时，没有使用初始连接时使用的字符集
+366.2) 重构：重构了数据库连接池模块的代码，当使用 dbopen 时不再需要指定字符集
+
+365) 2015.10.19
+365.1) feature: redis_client_cluster/redis_client_pool/redis_client 支持连接
+成功后使用连接密码进行身份验证，从而使 redis 的集群模块支持密码验证功能
+
+364) 2015.10.8
+364.1) feature: json 类增加了重载运行符[]接口，方便用户获得第一个匹配对象
+
+363) 2015.10.7
+363.1) feature: json 类添加了新方法 getFirstElementByTagName，该方法在遍历过程
+中当匹配到一个符合的节点后便立即返回，因而效率比 getElementsByTagName 更高
+363.2) performance: xml::getFirstElementByTag 使用 lib_acl 库中新加的函数
+acl_xml_getFirstElementByTagName，执行效率更高
+
+362) 2015.9.30
+362.1) bugfix: string 类中的方法 strip 当其中参数 each 为 false 时分析方式有误
+362.2) feature: string 类中的方法 strip 采用写时拷贝技术
+362.3) feature: mail_attach 类增加了方法 set_filename
+
+361) 2015.9.29
+361.1) bugfix: string 类中的方法 strip 在当其中的参数 each 为 true 时分析方法有误
+
+360) 2015.9.28
+360.1) feature: json_node 类增加了节点类型的判断方法
+
+359) 2015.9.25
+359.1) feature: http 模块中的 HttpServlet 类增加了 doOther 虚接口，从而可以
+支持其它未知的 HTTP 请求方法
+359.2) feature: smtp 模块下组装邮件的功能完善
+359.3) samples/mime/mail_builder: 示例功能完善
+
+358) 2015.9.22
+358.1) feature: json 解析器增加支持判断是否解析完毕的功能
+
+357) 2015.9.21
+357.1) bugfix（严重）: 连接池基础类 connect_pool 中的方法 check_idle 当参数
+exclusive 为 false 时会造成提前解锁; 该 BUG 影响所有该类的子类。
+357.2) safety: string 类中的宏 MCP 增加了安全性检测
+
+356) 2015.9.18
+356.1) feature: connect_pool/connect_manager 连接池及连接池管理类允许设置
+无连接数上限
+
+355) 2015.9.9
+355.1) feature: smtp_client 类已经可以非常方便地发送邮件
+355.2) samples/smtp_client: 测试邮件发送过程
+
+354) 2015.9.7
+354.1) bugfix: geo_member::set_coordinate 中设置经纬度的参数有误
+354.2) bugfix: db_row::field_int64 之前使用的将字符串转为64位整数的方法在32位
+机器上有问题，统一换成 acl_atoi64
+354.3) feature: smtp 模块增加了邮件合成的功能
+354.4) sample: mime_builder 例子用来测试邮件合成功能
+354.5) bugfix: mime_stype_name 函数的下标起始位置不是从 0 开始的，所以需要将所给的
+下标位置减去起始下标值方能得到数组的真正下标值
+
+353) 2015.9.6
+353.1) bugfix: redis_zset::zrangebyscore_get 其中的 argc 计数有误
+
+352) 2015.9.2
+352.1) feature: 添加 smtp_client 类用来发送电子邮件，同时支持 SSL 方式发送邮件
+
+351）2015.8.31
+351.1) compile: VC2010 工程中未包含 thread_queue 类的源文件和头文件
+351.2) feature: locker 互斥类增加了 lock_guard 类以便于简化加锁/解锁操作
+
 ------------------------------------------------------------------------
 350) 2015.8.26
 350.1) feature: string 类在进行 base64 解码时，需要自动在尾部添加 \0 以防止使用者

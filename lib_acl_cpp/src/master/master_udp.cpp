@@ -1,8 +1,10 @@
 #include "acl_stdafx.hpp"
+#ifndef ACL_PREPARE_COMPILE
 #include "acl_cpp/stdlib/log.hpp"
 #include "acl_cpp/stdlib/util.hpp"
 #include "acl_cpp/stream/socket_stream.hpp"
 #include "acl_cpp/master/master_udp.hpp"
+#endif
 
 namespace acl
 {
@@ -86,7 +88,7 @@ bool master_udp::run_alone(const char* addrs, const char* path /* = NULL */,
 	acl_assert(addrs && *addrs);
 
 #ifdef ACL_WINDOWS
-	acl_init();
+	acl_cpp_init();
 #endif
 	ACL_EVENT* eventp = acl_event_new_select(1, 0);
 	set_event(eventp);  // 设置基类的事件句柄
